@@ -262,16 +262,6 @@ Returns list of (task status age-string note) entries."
   (interactive)
   (call-interactively #'agent-dispatch))
 
-(define-derived-mode agent-queue-mode tabulated-list-mode "AgentQueue"
-  "Major mode for managing coding agents."
-  (setq tabulated-list-format
-        [("Status" 10 agent-queue--sort-by-attention)
-         ("Task" 24 t)
-         ("Age" 8 t)
-         ("Note" 30 t)])
-  (setq tabulated-list-sort-key '("Status" . nil))
-  (tabulated-list-init-header))
-
 (defvar agent-queue-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") #'agent-queue-jump)
@@ -281,6 +271,16 @@ Returns list of (task status age-string note) entries."
     (define-key map (kbd "k")   #'agent-queue-kill)
     map)
   "Keymap for `agent-queue-mode'.")
+
+(define-derived-mode agent-queue-mode tabulated-list-mode "AgentQueue"
+  "Major mode for managing coding agents."
+  (setq tabulated-list-format
+        [("Status" 10 agent-queue--sort-by-attention)
+         ("Task" 24 t)
+         ("Age" 8 t)
+         ("Note" 30 t)])
+  (setq tabulated-list-sort-key '("Status" . nil))
+  (tabulated-list-init-header))
 
 ;;;; Entry points
 
