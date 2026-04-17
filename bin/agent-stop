@@ -1,0 +1,28 @@
+#!/usr/bin/env bash
+# agent-stop — kill an agent window and remove its state file
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/agent-lib.sh"
+
+usage() {
+  echo "Usage: agent-stop <task-name>"
+  echo ""
+  echo "Kill an agent's tmux window and remove its state file."
+  exit 1
+}
+
+[[ $# -ge 1 ]] || usage
+
+task="$1"
+
+# Kill the tmux window by window ID
+wid=$(agent_get_window_id "$task")
+if [[ -n "$wid" ]]; then
+  tmux kill-window -t "$wid" 2>/dev/null || true
+fi
+
+# Remove state file
+rm -f "${AGENT_STATE_DIR}/${task}"
+
+echo "Stopped: $task"
