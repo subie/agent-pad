@@ -220,6 +220,16 @@ Returns list of (task status age-string note) entries."
           (when (>= (length parts) 5)
             (nth 4 parts)))))))
 
+(defun agent-queue--tmux-attach-cmd (window-id task)
+  "Build a tmux command that attaches to WINDOW-ID via a grouped session.
+Uses a temporary grouped session so eat gets independent sizing
+from the main tmux client."
+  (let ((eat-session (format "eat-%s-%s" task (emacs-pid))))
+    (format "TMUX='' exec tmux new-session -t %s -s %s \\; set-option destroy-unattached on \\; select-window -t %s"
+            (shell-quote-argument agent-queue-session)
+            (shell-quote-argument eat-session)
+            (shell-quote-argument window-id))))
+
 (defun agent-queue-jump ()
   "Open an eat buffer attached to the selected agent's tmux window."
   (interactive)
@@ -233,8 +243,7 @@ Returns list of (task status age-string note) entries."
               (let ((eat-buf (eat-make buf-name
                                       "/bin/bash" nil
                                       "-c"
-                                      (format "TMUX='' exec tmux attach -t %s"
-                                              (shell-quote-argument wid)))))
+                                      (agent-queue--tmux-attach-cmd wid task))))
                 (when eat-buf
                   (switch-to-buffer eat-buf)))
             (message "No window ID found for %s" task)))))))
@@ -324,8 +333,7 @@ attached to the agent's tmux window."
                            (let ((eat-buf (eat-make buf-name
                                                     "/bin/bash" nil
                                                     "-c"
-                                                    (format "TMUX='' exec tmux attach -t %s"
-                                                            (shell-quote-argument wid)))))
+                                                     (agent-queue--tmux-attach-cmd wid task))))
                              (when eat-buf
                                (switch-to-buffer eat-buf)))
                          (message "Could not find window for %s" task))))))))
@@ -346,8 +354,7 @@ attached to the agent's tmux window."
             (let ((eat-buf (eat-make buf-name
                                     "/bin/bash" nil
                                     "-c"
-                                    (format "TMUX='' exec tmux attach -t %s"
-                                            (shell-quote-argument wid)))))
+                                     (agent-queue--tmux-attach-cmd wid task))))
               (when eat-buf
                 (switch-to-buffer eat-buf)))
           (message "No window ID found for %s" task))))))
