@@ -330,5 +330,27 @@ attached to the agent's tmux window."
                                (switch-to-buffer eat-buf)))
                          (message "Could not find window for %s" task))))))))
 
+;;;###autoload
+(defun agent-queue-jump-to (task)
+  "Jump to an agent's eat buffer by TASK name, with completion."
+  (interactive
+   (list (completing-read "Agent: "
+                          (when (file-directory-p agent-queue-state-dir)
+                            (directory-files agent-queue-state-dir nil "^[^.]"))
+                          nil t)))
+  (let ((buf-name (format "*agent:%s*" task)))
+    (if (get-buffer buf-name)
+        (switch-to-buffer buf-name)
+      (let ((wid (agent-queue--get-window-id task)))
+        (if (and wid (not (string-empty-p wid)))
+            (let ((eat-buf (eat-make buf-name
+                                    "/bin/bash" nil
+                                    "-c"
+                                    (format "TMUX='' exec tmux attach -t %s"
+                                            (shell-quote-argument wid)))))
+              (when eat-buf
+                (switch-to-buffer eat-buf)))
+          (message "No window ID found for %s" task))))))
+
 (provide 'agent-queue)
 ;;; agent-queue.el ends here
