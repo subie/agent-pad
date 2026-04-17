@@ -140,9 +140,13 @@ Returns list of (task status age-string note) entries."
                 (agent-queue--update-state-and-window
                  task derived-status old-status note))
               (puthash task derived-status agent-queue--previous-states)
-              (push (list task
-                          (vector derived-status task age-str note))
-                    entries))))))
+              (let ((face (agent-queue--face-for derived-status)))
+                (push (list task
+                            (vector (propertize derived-status 'face face)
+                                    (propertize task 'face face)
+                                    (propertize age-str 'face face)
+                                    (propertize (or note "") 'face face)))
+                      entries)))))))
     (nreverse entries)))
 
 ;;;; Status priority for sorting
@@ -193,21 +197,9 @@ Returns list of (task status age-string note) entries."
   (interactive)
   (when-let ((buf (get-buffer "*agent-queue*")))
     (with-current-buffer buf
-      (let ((inhibit-read-only t)
-            (entries (agent-queue--read-all-state)))
+      (let ((entries (agent-queue--read-all-state)))
         (setq tabulated-list-entries entries)
-        (tabulated-list-print t)
-        ;; Apply faces per-row
-        (save-excursion
-          (goto-char (point-min))
-          (while (not (eobp))
-            (when-let ((entry (tabulated-list-get-entry)))
-              (let* ((status (aref entry 0))
-                     (face (agent-queue--face-for status))
-                     (beg (line-beginning-position))
-                     (end (line-end-position)))
-                (put-text-property beg end 'face face)))
-            (forward-line 1)))))))
+        (tabulated-list-print t)))))
 
 (defun agent-queue--get-window-id (task)
   "Get the tmux window ID for TASK from its state file."
