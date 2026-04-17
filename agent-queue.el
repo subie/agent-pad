@@ -193,7 +193,8 @@ Returns list of (task status age-string note) entries."
   (interactive)
   (when-let ((buf (get-buffer "*agent-queue*")))
     (with-current-buffer buf
-      (let ((entries (agent-queue--read-all-state)))
+      (let ((inhibit-read-only t)
+            (entries (agent-queue--read-all-state)))
         (setq tabulated-list-entries entries)
         (tabulated-list-print t)
         ;; Apply faces per-row
