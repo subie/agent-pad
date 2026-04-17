@@ -230,6 +230,24 @@ from the main tmux client."
             (shell-quote-argument eat-session)
             (shell-quote-argument window-id))))
 
+(defun agent-queue--eat-attach (buf-name window-id task)
+  "Create an eat buffer BUF-NAME attached to tmux WINDOW-ID for TASK.
+Displays the buffer before starting the process so eat picks up
+the correct terminal dimensions from the Emacs window."
+  (let ((buffer (get-buffer-create buf-name)))
+    (with-current-buffer buffer
+      (unless (eq major-mode 'eat-mode)
+        (eat-mode)))
+    ;; Display first so eat gets correct window dimensions
+    (switch-to-buffer buffer)
+    ;; Now start the process
+    (with-current-buffer buffer
+      (unless (and eat-terminal
+                   (eat-term-parameter eat-terminal 'eat--process))
+        (eat-exec buffer buf-name "/bin/bash" nil
+                  (list "-c" (agent-queue--tmux-attach-cmd window-id task)))))
+    buffer))
+
 (defun agent-queue-jump ()
   "Open an eat buffer attached to the selected agent's tmux window."
   (interactive)
@@ -240,12 +258,7 @@ from the main tmux client."
           (switch-to-buffer buf-name)
         (let ((wid (agent-queue--get-window-id task)))
           (if (and wid (not (string-empty-p wid)))
-              (let ((eat-buf (eat-make buf-name
-                                      "/bin/bash" nil
-                                      "-c"
-                                      (agent-queue--tmux-attach-cmd wid task))))
-                (when eat-buf
-                  (switch-to-buffer eat-buf)))
+              (agent-queue--eat-attach buf-name wid task)
             (message "No window ID found for %s" task)))))))
 
 (defun agent-queue-mark-done ()
@@ -330,12 +343,7 @@ attached to the agent's tmux window."
                      (let* ((buf-name (format "*agent:%s*" task))
                             (wid (agent-queue--get-window-id task)))
                        (if (and wid (not (string-empty-p wid)))
-                           (let ((eat-buf (eat-make buf-name
-                                                    "/bin/bash" nil
-                                                    "-c"
-                                                     (agent-queue--tmux-attach-cmd wid task))))
-                             (when eat-buf
-                               (switch-to-buffer eat-buf)))
+                           (agent-queue--eat-attach buf-name wid task)
                          (message "Could not find window for %s" task))))))))
 
 ;;;###autoload
@@ -351,12 +359,7 @@ attached to the agent's tmux window."
         (switch-to-buffer buf-name)
       (let ((wid (agent-queue--get-window-id task)))
         (if (and wid (not (string-empty-p wid)))
-            (let ((eat-buf (eat-make buf-name
-                                    "/bin/bash" nil
-                                    "-c"
-                                     (agent-queue--tmux-attach-cmd wid task))))
-              (when eat-buf
-                (switch-to-buffer eat-buf)))
+            (agent-queue--eat-attach buf-name wid task)
           (message "No window ID found for %s" task))))))
 
 (provide 'agent-queue)
