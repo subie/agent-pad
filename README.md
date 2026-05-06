@@ -1,4 +1,4 @@
-# agent-queue
+# agent-pad
 
 A lightweight system for managing multiple coding agents from Emacs and the
 terminal. Agents run in tmux windows; Emacs provides the primary dashboard.
@@ -20,12 +20,12 @@ timestamps every 5 seconds.
 Add to your Emacs config:
 
 ```elisp
-(use-package agent-queue
-  :vc (:url "https://github.com/subie/agent-queue"
+(use-package agent-pad
+  :vc (:url "https://github.com/subie/agent-pad"
             :rev :newest
             :branch "main")
-  :commands (agent-queue agent-dispatch)
-  :bind (("C-c q" . agent-queue)))
+  :commands (agent-pad agent-dispatch)
+  :bind (("C-c q" . agent-pad)))
 ```
 
 This installs the Emacs package and adds the shell commands to your PATH
@@ -34,8 +34,8 @@ automatically.
 ### Shell-only
 
 ```bash
-git clone https://github.com/subie/agent-queue.git ~/dev/agent-queue
-export PATH="$HOME/dev/agent-queue/bin:$PATH"  # add to .zshrc/.bashrc
+git clone https://github.com/subie/agent-pad.git ~/dev/agent-pad
+export PATH="$HOME/dev/agent-pad/bin:$PATH"  # add to .zshrc/.bashrc
 ```
 
 ### tmux keybinding (optional)
@@ -70,7 +70,7 @@ From Emacs:
 
 ### Monitoring
 
-**Emacs (primary):** `M-x agent-queue`
+**Emacs (primary):** `M-x agent-pad`
 
 | Key   | Action                                    |
 |-------|-------------------------------------------|
@@ -117,7 +117,7 @@ All settings via environment variables:
 | `AGENT_STATE_DIR`       | `~/.agent-state`     | Directory for state files                |
 | `AGENT_SILENCE_SECONDS` | `30`                 | Seconds of silence before marking waiting|
 
-Emacs customization group: `M-x customize-group agent-queue`
+Emacs customization group: `M-x customize-group agent-pad`
 
 ## State file format
 

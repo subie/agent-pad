@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# agent-lib.sh — shared configuration and helpers for agent-queue
+# agent-lib.sh — shared configuration and helpers for agent-pad
 # Source this file from other agent-* scripts.
 
 AGENT_SESSION="${AGENT_SESSION:-agents}"
