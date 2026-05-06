@@ -4,7 +4,7 @@
 ;; Version: 0.1.0
 ;; Package-Requires: ((emacs "29.1") (eat "0.9"))
 ;; Keywords: processes, tools
-;; URL: https://github.com/subiepatel/agent-queue
+;; URL: https://github.com/subie/agent-queue
 
 ;;; Commentary:
 

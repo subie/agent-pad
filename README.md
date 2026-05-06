@@ -21,7 +21,7 @@ Add to your Emacs config:
 
 ```elisp
 (use-package agent-queue
-  :vc (:url "https://github.com/subiepatel/agent-queue"
+  :vc (:url "https://github.com/subie/agent-queue"
             :rev :newest
             :branch "main")
   :commands (agent-queue agent-dispatch)
@@ -34,7 +34,7 @@ automatically.
 ### Shell-only
 
 ```bash
-git clone https://github.com/subiepatel/agent-queue.git ~/dev/agent-queue
+git clone https://github.com/subie/agent-queue.git ~/dev/agent-queue
 export PATH="$HOME/dev/agent-queue/bin:$PATH"  # add to .zshrc/.bashrc
 ```
 
