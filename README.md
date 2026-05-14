@@ -38,6 +38,16 @@ automatically.
 - `M-x agent-dispatch` — prompts for task name and command
 - `C-u M-x agent-dispatch` — dispatch and immediately attach via `eat`
 
+Example commands to dispatch:
+
+```bash
+# Non-interactive — agent runs the prompt and exits
+copilot -p "refactor the auth module to use JWT"
+
+# Interactive — agent stays open for follow-up conversation
+copilot -i "fix the flaky tests in src/api"
+```
+
 ### Monitoring
 
 **Emacs (primary):** `M-x agent-pad`
