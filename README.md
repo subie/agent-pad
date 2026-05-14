@@ -31,39 +31,9 @@ Add to your Emacs config:
 This installs the Emacs package and adds the shell commands to your PATH
 automatically.
 
-### Shell-only
-
-```bash
-git clone https://github.com/subie/agent-pad.git ~/dev/agent-pad
-export PATH="$HOME/dev/agent-pad/bin:$PATH"  # add to .zshrc/.bashrc
-```
-
-### tmux keybinding (optional)
-
-Add to `~/.tmux.conf` to quickly jump to the agents session:
-
-```
-bind-key H switch-client -t agents
-```
-
 ## Usage
 
 ### Dispatching agents
-
-From the shell:
-
-```bash
-# Fire-and-forget (agent exits when done)
-agent-start auth-refactor "copilot -p 'refactor the auth module'"
-
-# Interactive (agent stays open for follow-up)
-agent-start fix-tests "copilot -i 'fix the flaky tests'"
-
-# Any command works
-agent-start run-tests "cd ~/src/api && make test"
-```
-
-From Emacs:
 
 - `M-x agent-dispatch` — prompts for task name and command
 - `C-u M-x agent-dispatch` — dispatch and immediately attach via `eat`
@@ -88,23 +58,6 @@ The queue auto-refreshes every 5 seconds. Agents needing attention
 
 ```
 ⏳ auth-refactor | ❓ fix-tests | ✓  add-pagination
-```
-
-### Manual signaling
-
-For scripts that want explicit control:
-
-```bash
-agent-signal waiting auth-refactor "needs code review"
-agent-signal done auth-refactor "PR #42 ready"
-agent-signal blocked fix-tests "waiting on test credentials"
-```
-
-### Cleanup
-
-```bash
-agent-clean              # remove all done state files and windows
-agent-stop auth-refactor # kill a specific agent
 ```
 
 ## Configuration
@@ -147,3 +100,44 @@ No hooks or background daemons. The Emacs refresh timer (every 5s) polls
 - **tmux** — process holder and passive dashboard
 - **Emacs 29.1+** with [eat](https://codeberg.org/akib/emacs-eat) — terminal
   emulation for attaching to agents
+
+## Shell-only usage
+
+You can use agent-pad entirely from the terminal, without Emacs.
+
+### Installation
+
+```bash
+git clone https://github.com/subie/agent-pad.git ~/dev/agent-pad
+export PATH="$HOME/dev/agent-pad/bin:$PATH"  # add to .zshrc/.bashrc
+```
+
+### Dispatching agents
+
+```bash
+# Fire-and-forget (agent exits when done)
+agent-start auth-refactor "copilot -p 'refactor the auth module'"
+
+# Interactive (agent stays open for follow-up)
+agent-start fix-tests "copilot -i 'fix the flaky tests'"
+
+# Any command works
+agent-start run-tests "cd ~/src/api && make test"
+```
+
+### Manual signaling
+
+For scripts that want explicit control:
+
+```bash
+agent-signal waiting auth-refactor "needs code review"
+agent-signal done auth-refactor "PR #42 ready"
+agent-signal blocked fix-tests "waiting on test credentials"
+```
+
+### Cleanup
+
+```bash
+agent-clean              # remove all done state files and windows
+agent-stop auth-refactor # kill a specific agent
+```
