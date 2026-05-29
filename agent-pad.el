@@ -2,7 +2,7 @@
 
 ;; Author: Subie Patel
 ;; Version: 0.1.0
-;; Package-Requires: ((emacs "29.1") (eat "0.9"))
+;; Package-Requires: ((emacs "29.1") (eat "0.9") (transient "0.4"))
 ;; Keywords: processes, tools
 ;; URL: https://github.com/subie/agent-pad
 
@@ -22,6 +22,7 @@
 ;;; Code:
 
 (require 'eat)
+(require 'transient)
 
 ;;;; Customization
 
@@ -45,6 +46,16 @@
 (defcustom agent-pad-refresh-interval 5
   "Seconds between auto-refresh of the queue buffer."
   :type 'integer)
+
+(defcustom agent-pad-copilot-program "copilot"
+  "Program name used to launch the Copilot CLI."
+  :type 'string)
+
+(defcustom agent-pad-default-directory nil
+  "Default source directory for the Copilot \"-C\" option.
+If nil, the directory is read interactively starting from
+`default-directory'."
+  :type '(choice (const :tag "Ask each time" nil) directory))
 
 ;;;; Setup bin/ PATH
 
@@ -333,7 +344,7 @@ Requires Emacs to be running inside a tmux client."
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") #'agent-pad-jump)
     (define-key map (kbd "t")   #'agent-pad-jump-tmux)
-    (define-key map (kbd "+")   #'agent-pad-dispatch-from-queue)
+    (define-key map (kbd "+")   #'agent-pad-dispatch)
     (define-key map (kbd "g")   #'agent-pad-refresh)
     (define-key map (kbd "d")   #'agent-pad-mark-done)
     (define-key map (kbd "k")   #'agent-pad-kill)
@@ -373,6 +384,11 @@ Requires Emacs to be running inside a tmux client."
 With prefix arg \\[universal-argument], also open an eat buffer
 attached to the agent's tmux window."
   (interactive "sTask name: \nsCommand: ")
+  (agent-pad--run-agent task cmd current-prefix-arg))
+
+(defun agent-pad--run-agent (task cmd &optional attach)
+  "Run CMD as agent TASK via agent-start.
+When ATTACH is non-nil, open an eat buffer on the agent's window."
   (let ((result (shell-command-to-string
                  (format "agent-start %s %s 2>&1"
                          (shell-quote-argument task)
@@ -380,8 +396,8 @@ attached to the agent's tmux window."
     (message "%s" (string-trim result))
     ;; Refresh queue if it's open
     (agent-pad-refresh)
-    ;; With prefix arg, attach to the agent
-    (when current-prefix-arg
+    ;; Optionally attach to the agent
+    (when attach
       ;; Small delay to let tmux create the window and state file
       (run-at-time 0.5 nil
                    (lambda ()
@@ -390,6 +406,193 @@ attached to the agent's tmux window."
                        (if (and wid (not (string-empty-p wid)))
                            (agent-pad--eat-attach buf-name wid task)
                          (message "Could not find window for %s" task))))))))
+
+;;;; Transient dispatch menu
+
+(defvar agent-pad--prompt ""
+  "Current composed prompt for the Copilot dispatch transient.")
+
+(defvar agent-pad--prompt-return-buffer nil
+  "Buffer to return to after composing a prompt.")
+
+(defconst agent-pad--prompt-buffer-name "*agent-pad prompt*"
+  "Name of the buffer used to compose a Copilot prompt.")
+
+(defvar agent-pad-prompt-mode-map
+  (let ((map (make-sparse-keymap)))
+    (define-key map (kbd "C-c C-c") #'agent-pad-prompt-commit)
+    (define-key map (kbd "C-c C-k") #'agent-pad-prompt-abort)
+    map)
+  "Keymap for `agent-pad-prompt-mode'.")
+
+(define-minor-mode agent-pad-prompt-mode
+  "Minor mode for composing a Copilot prompt.
+\\<agent-pad-prompt-mode-map>
+\\[agent-pad-prompt-commit] stores the prompt and returns to the dispatch menu.
+\\[agent-pad-prompt-abort] aborts without changing the prompt."
+  :lighter " AgentPrompt"
+  :keymap agent-pad-prompt-mode-map)
+
+(defun agent-pad-edit-prompt ()
+  "Open a dedicated buffer to compose the Copilot prompt."
+  (interactive)
+  (setq agent-pad--prompt-return-buffer (current-buffer))
+  (let ((buf (get-buffer-create agent-pad--prompt-buffer-name)))
+    (with-current-buffer buf
+      (erase-buffer)
+      (insert agent-pad--prompt)
+      (goto-char (point-min))
+      (agent-pad-prompt-mode 1)
+      (setq header-line-format
+            "Compose prompt — C-c C-c to save, C-c C-k to cancel"))
+    (pop-to-buffer buf)))
+
+(defun agent-pad-prompt-commit ()
+  "Store the composed prompt and return to the dispatch menu."
+  (interactive)
+  (setq agent-pad--prompt (buffer-string))
+  (let ((buf (current-buffer)))
+    (when (window-parent (selected-window))
+      (delete-window))
+    (kill-buffer buf))
+  (when (buffer-live-p agent-pad--prompt-return-buffer)
+    (switch-to-buffer agent-pad--prompt-return-buffer))
+  (message "Prompt stored (%d chars). Press + to re-open dispatch."
+           (length agent-pad--prompt))
+  (call-interactively #'agent-pad-dispatch))
+
+(defun agent-pad-prompt-abort ()
+  "Abort prompt composition without changing the stored prompt."
+  (interactive)
+  (let ((buf (current-buffer)))
+    (when (window-parent (selected-window))
+      (delete-window))
+    (kill-buffer buf))
+  (when (buffer-live-p agent-pad--prompt-return-buffer)
+    (switch-to-buffer agent-pad--prompt-return-buffer))
+  (message "Prompt edit aborted."))
+
+(defun agent-pad--prompt-summary ()
+  "Return a short one-line summary of the current prompt for display."
+  (if (string-empty-p (string-trim agent-pad--prompt))
+      (propertize "not set" 'face 'transient-inactive-value)
+    (let* ((lines (split-string agent-pad--prompt "\n" t))
+           (first (string-trim (or (car lines) "")))
+           (preview (if (> (length first) 40)
+                        (concat (substring first 0 40) "…")
+                      first)))
+      (propertize (format "%d line%s: \"%s\""
+                          (length lines)
+                          (if (= (length lines) 1) "" "s")
+                          preview)
+                  'face 'transient-value))))
+
+(defun agent-pad--slugify (string)
+  "Turn STRING into a kebab-case identifier."
+  (let* ((s (downcase (string-trim string)))
+         (s (replace-regexp-in-string "[^a-z0-9]+" "-" s))
+         (s (replace-regexp-in-string "^-+\\|-+$" "" s)))
+    (if (> (length s) 40) (substring s 0 40) s)))
+
+(defun agent-pad--write-prompt-file (prompt)
+  "Write PROMPT to a temp file and return its absolute path."
+  (let ((file (make-temp-file "agent-prompt-")))
+    (with-temp-file file
+      (insert prompt))
+    file))
+
+;;;; Transient infixes
+
+(transient-define-infix agent-pad--infix-dir ()
+  "Source directory passed to copilot via -C."
+  :class 'transient-option
+  :key "-C"
+  :description "Source dir"
+  :argument "-C="
+  :reader (lambda (_prompt _init _hist)
+            (expand-file-name
+             (read-directory-name "Source dir: "
+                                  (or agent-pad-default-directory
+                                      default-directory)))))
+
+(transient-define-infix agent-pad--infix-task ()
+  "Task name (window name); auto-derived from the prompt if blank."
+  :class 'transient-option
+  :key "-n"
+  :description "Task name"
+  :argument "--task="
+  :reader (lambda (_prompt _init _hist)
+            (read-string "Task name: ")))
+
+(transient-define-infix agent-pad--infix-effort ()
+  "Reasoning effort for copilot."
+  :class 'transient-option
+  :key "-E"
+  :description "--effort"
+  :argument "--effort="
+  :choices '("low" "medium" "high"))
+
+;;;; Command builder and dispatch suffixes
+
+(defun agent-pad--build-copilot-command (args promptfile)
+  "Build a copilot command string from transient ARGS and PROMPTFILE."
+  (let* ((dir (transient-arg-value "-C=" args))
+         (effort (transient-arg-value "--effort=" args))
+         (non-interactive (member "--non-interactive" args))
+         (mode-flag (if non-interactive "-p" "-i"))
+         (parts (list agent-pad-copilot-program
+                      mode-flag
+                      (format "\"$(cat %s)\""
+                              (shell-quote-argument promptfile)))))
+    (when (and dir (not (string-empty-p dir)))
+      (setq parts (append parts (list "-C" (shell-quote-argument dir)))))
+    (when (member "--autopilot" args)
+      (setq parts (append parts (list "--autopilot"))))
+    (when (member "--allow-all-tools" args)
+      (setq parts (append parts (list "--allow-all-tools"))))
+    (when (and effort (not (string-empty-p effort)))
+      (setq parts (append parts (list "--effort" effort))))
+    (string-join parts " ")))
+
+(defun agent-pad-dispatch-copilot (&optional args)
+  "Dispatch a Copilot agent from the transient ARGS and composed prompt."
+  (interactive (list (transient-args 'agent-pad-dispatch)))
+  (when (string-empty-p (string-trim agent-pad--prompt))
+    (user-error "No prompt set — press \"e\" to compose one"))
+  (let* ((task-arg (transient-arg-value "--task=" args))
+         (task (if (and task-arg (not (string-empty-p task-arg)))
+                   task-arg
+                 (let ((slug (agent-pad--slugify
+                              (car (split-string agent-pad--prompt "\n" t)))))
+                   (if (string-empty-p slug) "copilot" slug))))
+         (promptfile (agent-pad--write-prompt-file agent-pad--prompt))
+         (cmd (agent-pad--build-copilot-command args promptfile)))
+    (agent-pad--run-agent task cmd)))
+
+(defun agent-pad-dispatch-raw (task cmd)
+  "Dispatch an arbitrary command CMD as agent TASK."
+  (interactive "sTask name: \nsCommand: ")
+  (agent-pad--run-agent task cmd))
+
+;;;###autoload (autoload 'agent-pad-dispatch "agent-pad" nil t)
+(transient-define-prefix agent-pad-dispatch ()
+  "Dispatch a coding agent into a tmux window."
+  [:description
+   (lambda () (format "Agent dispatch    prompt: %s" (agent-pad--prompt-summary)))
+   ["Copilot options"
+    ("e" "Edit prompt" agent-pad-edit-prompt :transient t)
+    (agent-pad--infix-dir)
+    ("-a" "--autopilot" "--autopilot")
+    ("-A" "--allow-all-tools" "--allow-all-tools")
+    ("-p" "Non-interactive (-p, default -i)" "--non-interactive")
+    (agent-pad--infix-effort)
+    (agent-pad--infix-task)]]
+  ["Dispatch"
+   ("c" "Copilot agent" agent-pad-dispatch-copilot)
+   ("r" "Raw command…" agent-pad-dispatch-raw)
+   ("q" "Quit" transient-quit-one)])
+
+;;;; Jump by name
 
 ;;;###autoload
 (defun agent-pad-jump-to (task)
