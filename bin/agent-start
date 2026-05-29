@@ -29,6 +29,13 @@ fi
 
 agent_ensure_session
 
+# Write the command to its own file so the wrapper can eval it safely,
+# preserving quotes, multi-line content, and command substitution such as
+# `copilot -i "$(cat <prompt-file>)"`.  Keeping the command in a file avoids
+# fragile quote nesting when it is baked into the wrapper.
+cmdfile=$(mktemp /tmp/agent-cmd-XXXXXX)
+printf '%s' "$cmd" > "$cmdfile"
+
 # Write a wrapper script that runs the command and signals done/blocked on exit.
 wrapper=$(mktemp /tmp/agent-wrapper-XXXXXX.sh)
 cat > "$wrapper" <<'WRAPPER_HEAD'
@@ -40,7 +47,7 @@ source "$SCRIPT_DIR/agent-lib.sh"
 _AQ_WID=\$(tmux display -p '#{window_id}' 2>/dev/null || true)
 # Write initial state with window ID
 agent_write_state "$task" "running" "" "\$_AQ_WID"
-( $cmd )
+eval "\$(cat "$cmdfile")"
 exit_code=\$?
 if [[ \$exit_code -eq 0 ]]; then
   agent_write_state "$task" "done" "exited successfully" "\$_AQ_WID"
@@ -52,7 +59,7 @@ fi
 echo ""
 echo "=== agent exited (code \$exit_code), press enter to close ==="
 read
-rm -f "$wrapper"
+rm -f "$wrapper" "$cmdfile"
 WRAPPER_BODY
 chmod +x "$wrapper"
 
