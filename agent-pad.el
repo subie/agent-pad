@@ -412,9 +412,6 @@ When ATTACH is non-nil, open an eat buffer on the agent's window."
 (defvar agent-pad--prompt ""
   "Current composed prompt for the Copilot dispatch transient.")
 
-(defvar agent-pad--prompt-return-buffer nil
-  "Buffer to return to after composing a prompt.")
-
 (defconst agent-pad--prompt-buffer-name "*agent-pad prompt*"
   "Name of the buffer used to compose a Copilot prompt.")
 
@@ -434,9 +431,10 @@ When ATTACH is non-nil, open an eat buffer on the agent's window."
   :keymap agent-pad-prompt-mode-map)
 
 (defun agent-pad-edit-prompt ()
-  "Open a dedicated buffer to compose the Copilot prompt."
+  "Open a dedicated buffer to compose the Copilot prompt.
+Invoked from the dispatch transient, which is suspended while
+editing and resumed (with its options intact) on commit/abort."
   (interactive)
-  (setq agent-pad--prompt-return-buffer (current-buffer))
   (let ((buf (get-buffer-create agent-pad--prompt-buffer-name)))
     (with-current-buffer buf
       (erase-buffer)
@@ -448,29 +446,20 @@ When ATTACH is non-nil, open an eat buffer on the agent's window."
     (pop-to-buffer buf)))
 
 (defun agent-pad-prompt-commit ()
-  "Store the composed prompt and return to the dispatch menu."
+  "Store the composed prompt and resume the dispatch menu."
   (interactive)
   (setq agent-pad--prompt (buffer-string))
-  (let ((buf (current-buffer)))
-    (when (window-parent (selected-window))
-      (delete-window))
-    (kill-buffer buf))
-  (when (buffer-live-p agent-pad--prompt-return-buffer)
-    (switch-to-buffer agent-pad--prompt-return-buffer))
-  (message "Prompt stored (%d chars). Press + to re-open dispatch."
-           (length agent-pad--prompt))
-  (call-interactively #'agent-pad-dispatch))
+  (let ((n (length agent-pad--prompt)))
+    (quit-window t)
+    (message "Prompt stored (%d chars)." n))
+  (transient-resume))
 
 (defun agent-pad-prompt-abort ()
-  "Abort prompt composition without changing the stored prompt."
+  "Abort prompt composition and resume the dispatch menu."
   (interactive)
-  (let ((buf (current-buffer)))
-    (when (window-parent (selected-window))
-      (delete-window))
-    (kill-buffer buf))
-  (when (buffer-live-p agent-pad--prompt-return-buffer)
-    (switch-to-buffer agent-pad--prompt-return-buffer))
-  (message "Prompt edit aborted."))
+  (quit-window t)
+  (message "Prompt edit aborted.")
+  (transient-resume))
 
 (defun agent-pad--prompt-summary ()
   "Return a short one-line summary of the current prompt for display."
@@ -580,7 +569,8 @@ When ATTACH is non-nil, open an eat buffer on the agent's window."
   [:description
    (lambda () (format "Agent dispatch    prompt: %s" (agent-pad--prompt-summary)))
    ["Copilot options"
-    ("e" "Edit prompt" agent-pad-edit-prompt :transient t)
+    ("e" "Edit prompt" agent-pad-edit-prompt
+     :transient transient--do-suspend)
     (agent-pad--infix-dir)
     ("-a" "--autopilot" "--autopilot")
     ("-A" "--allow-all-tools" "--allow-all-tools")
