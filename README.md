@@ -146,6 +146,20 @@ No hooks or background daemons. The Emacs refresh timer (every 5s) polls
 - **Emacs 29.1+** with [eat](https://codeberg.org/akib/emacs-eat) — terminal
   emulation for attaching to agents
 
+## Testing
+
+```bash
+./tests/run-tests.sh
+```
+
+This runs the ERT (elisp) suite and the shell tests. The ERT suite stubs
+`eat` so it loads in batch without the dependency. You can also run just the
+elisp tests directly:
+
+```bash
+emacs -Q --batch -l tests/agent-pad-test.el -f ert-run-tests-batch-and-exit
+```
+
 ## Shell-only usage
 
 You can use agent-pad entirely from the terminal, without Emacs.
