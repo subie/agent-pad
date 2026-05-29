@@ -344,7 +344,7 @@ Requires Emacs to be running inside a tmux client."
   "Major mode for managing coding agents."
   (setq tabulated-list-format
         [("Status" 10 agent-pad--sort-by-attention)
-         ("Task" 24 t)
+         ("Task" 48 t)
          ("Age" 8 t)
          ("Note" 30 t)])
   (setq tabulated-list-sort-key '("Status" . nil))
