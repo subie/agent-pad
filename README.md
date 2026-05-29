@@ -24,8 +24,9 @@ Add to your Emacs config:
   :vc (:url "https://github.com/subie/agent-pad"
             :rev :newest
             :branch "main")
-  :commands (agent-pad agent-dispatch)
-  :bind (("C-c q" . agent-pad)))
+  :commands (agent-pad agent-dispatch agent-pad-dispatch)
+  :bind (("C-c q" . agent-pad)
+         ("C-c d" . agent-pad-dispatch)))
 ```
 
 This installs the Emacs package and adds the shell commands to your PATH
@@ -34,6 +35,39 @@ automatically.
 ## Usage
 
 ### Dispatching agents
+
+The easiest way is the **dispatch transient** (`M-x agent-pad-dispatch`, or
+`+` from the `agent-pad` queue buffer). It opens a Magit-style menu:
+
+```
+Agent dispatch    prompt: 3 lines: "refactor the auth…"
+─ Copilot options ────────────────────────────
+ e  Edit prompt
+-C  Source dir
+-a  --autopilot
+-A  --allow-all-tools
+-p  Non-interactive (-p, default -i)
+-E  --effort
+-n  Task name
+─ Dispatch ───────────────────────────────────
+ c  Copilot agent
+ r  Raw command…
+ q  Quit
+```
+
+- `e` opens a dedicated **prompt buffer** for composing long, multi-line
+  prompts. `C-c C-c` stores the prompt and returns to the menu; `C-c C-k`
+  aborts.
+- `-C` picks the source directory interactively (passed to `copilot -C`).
+- `-a`/`-A`/`-p`/`-E`/`-n` toggle `--autopilot`, `--allow-all-tools`,
+  non-interactive mode, reasoning effort, and the task (window) name.
+- `c` launches a Copilot agent built from the options above. The prompt is
+  written to a temp file and referenced as `"$(cat <file>)"`, so shell
+  metacharacters in the prompt stay inert. When the task name is blank it is
+  auto-derived as a kebab-case slug from the prompt's first line.
+- `r` dispatches **any** shell command verbatim (the non-copilot path).
+
+You can also dispatch directly:
 
 - `M-x agent-dispatch` — prompts for task name and command
 - `C-u M-x agent-dispatch` — dispatch and immediately attach via `eat`
@@ -56,7 +90,7 @@ copilot -i "fix the flaky tests in src/api"
 |-------|-------------------------------------------|
 | `RET` | Attach to agent in an `eat` buffer        |
 | `t`   | Switch the tmux client to the agent window |
-| `+`   | Dispatch a new agent                      |
+| `+`   | Open the dispatch transient (`agent-pad-dispatch`) |
 | `g`   | Refresh                                   |
 | `d`   | Mark done and clean up                    |
 | `k`   | Kill agent                                |
