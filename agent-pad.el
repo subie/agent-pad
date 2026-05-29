@@ -63,6 +63,12 @@
 (defvar agent-pad--timer nil
   "Timer for auto-refreshing the queue buffer.")
 
+(defvar agent-pad--activity-cache (make-hash-table :test 'equal)
+  "Maps window-id to (cons content-hash last-change-time).
+Used to detect real pane output, since tmux `window_activity'
+is also bumped by window selection and cannot distinguish
+output from focus changes.")
+
 (defun agent-pad--read-state-file (file)
   "Read and parse a single state FILE. Returns (task status timestamp note window-id)."
   (when (file-readable-p file)
@@ -77,29 +83,50 @@
                 (or (nth 3 parts) "")      ; note
                 (or (nth 4 parts) "")))))))  ; window-id
 
-(defun agent-pad--window-activity (window-id)
-  "Get the last activity timestamp for WINDOW-ID.
-Returns epoch seconds, or nil if window not found."
+(defun agent-pad--pane-content-hash (window-id)
+  "Return a hash of WINDOW-ID's visible pane content.
+Returns nil if the window does not exist.  Hashing the pane
+content detects actual output, unlike `window_activity' which
+tmux also bumps on window selection."
   (when (and window-id (not (string-empty-p window-id)))
-    (let ((output (string-trim
-                   (shell-command-to-string
-                    (format "tmux display -t %s -p '#{window_activity}' 2>/dev/null"
-                            (shell-quote-argument window-id))))))
-      (unless (string-empty-p output)
-        (string-to-number output)))))
+    (with-temp-buffer
+      (let ((status (call-process
+                     "tmux" nil t nil
+                     "capture-pane" "-p" "-t" window-id)))
+        (when (eq status 0)
+          (secure-hash 'md5 (buffer-string)))))))
 
-(defun agent-pad--derive-status (window-id current-status)
-  "Derive effective status for agent with WINDOW-ID based on tmux activity.
-CURRENT-STATUS is the status from the state file."
+(defun agent-pad--activity-age (window-id &optional baseline)
+  "Return seconds since WINDOW-ID last produced new output.
+Tracks pane-content changes across polls in `agent-pad--activity-cache'.
+On first sight of a window, BASELINE (epoch seconds, e.g. the
+state-file timestamp) seeds the last-change time so a long-idle
+agent is not briefly mislabelled as running.  Returns nil if the
+window no longer exists."
+  (let ((hash (agent-pad--pane-content-hash window-id)))
+    (when hash
+      (let* ((now (float-time))
+             (cached (gethash window-id agent-pad--activity-cache))
+             (last-change (cond
+                           ((and cached (equal (car cached) hash)) (cdr cached))
+                           (cached now)
+                           (baseline (float baseline))
+                           (t now))))
+        (puthash window-id (cons hash last-change) agent-pad--activity-cache)
+        (- now last-change)))))
+
+(defun agent-pad--derive-status (window-id current-status &optional baseline)
+  "Derive effective status for agent with WINDOW-ID based on pane activity.
+CURRENT-STATUS is the status from the state file.  BASELINE is the
+state-file timestamp, used to seed activity on first sight."
   ;; Don't override explicit done/blocked signals
   (if (member current-status '("done" "blocked"))
       current-status
-    (let ((activity (agent-pad--window-activity window-id)))
-      (if activity
-          (let ((age (- (float-time) activity)))
-            (if (> age agent-pad-silence-seconds)
-                "waiting"
-              "running"))
+    (let ((age (agent-pad--activity-age window-id baseline)))
+      (if age
+          (if (> age agent-pad-silence-seconds)
+              "waiting"
+            "running")
         ;; No window found — might have exited
         current-status))))
 
@@ -129,7 +156,7 @@ Returns list of (task status age-string note) entries."
       (dolist (file (directory-files dir t "^[^.]"))
         (when-let ((state (agent-pad--read-state-file file)))
           (cl-destructuring-bind (task file-status timestamp note window-id) state
-            (let* ((derived-status (agent-pad--derive-status window-id file-status))
+            (let* ((derived-status (agent-pad--derive-status window-id file-status timestamp))
                    (old-status (gethash task agent-pad--previous-states))
                    (age (/ (- now timestamp) 60.0))
                    (age-str (if (< age 60)
