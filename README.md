@@ -55,6 +55,7 @@ copilot -i "fix the flaky tests in src/api"
 | Key   | Action                                    |
 |-------|-------------------------------------------|
 | `RET` | Attach to agent in an `eat` buffer        |
+| `t`   | Switch the tmux client to the agent window |
 | `+`   | Dispatch a new agent                      |
 | `g`   | Refresh                                   |
 | `d`   | Mark done and clean up                    |

@@ -253,6 +253,31 @@ the correct terminal dimensions from the Emacs window."
               (agent-pad--eat-attach buf-name wid task)
             (message "No window ID found for %s" task)))))))
 
+(defun agent-pad--tmux-switch (window-id)
+  "Switch the live tmux client to WINDOW-ID in the agents session.
+Returns the trimmed shell output, which is empty on success."
+  (string-trim
+   (shell-command-to-string
+    (format "tmux switch-client -t %s \\; select-window -t %s 2>&1"
+            (shell-quote-argument agent-pad-session)
+            (shell-quote-argument window-id)))))
+
+(defun agent-pad-jump-tmux ()
+  "Switch the live tmux client to the selected agent's window.
+Unlike `agent-pad-jump', this does not open an eat buffer; it
+moves the attached tmux client to the agent's window directly.
+Requires Emacs to be running inside a tmux client."
+  (interactive)
+  (when-let ((entry (tabulated-list-get-entry)))
+    (let ((task (aref entry 1)))
+      (let ((wid (agent-pad--get-window-id task)))
+        (if (and wid (not (string-empty-p wid)))
+            (let ((result (agent-pad--tmux-switch wid)))
+              (if (string-empty-p result)
+                  (message "Switched tmux to %s" task)
+                (message "tmux: %s" result)))
+          (message "No window ID found for %s" task))))))
+
 (defun agent-pad-mark-done ()
   "Mark the selected agent as done and clean up."
   (interactive)
@@ -280,6 +305,7 @@ the correct terminal dimensions from the Emacs window."
 (defvar agent-pad-mode-map
   (let ((map (make-sparse-keymap)))
     (define-key map (kbd "RET") #'agent-pad-jump)
+    (define-key map (kbd "t")   #'agent-pad-jump-tmux)
     (define-key map (kbd "+")   #'agent-pad-dispatch-from-queue)
     (define-key map (kbd "g")   #'agent-pad-refresh)
     (define-key map (kbd "d")   #'agent-pad-mark-done)
