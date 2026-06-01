@@ -45,6 +45,7 @@ Agent dispatch    prompt: 3 lines: "refactor the auth…"
  e  Edit prompt
 -C  Source dir
 -a  --autopilot
+-l  --plan (plan mode)
 -A  --allow-all-tools
 -Y  --allow-all (yolo: tools+paths+urls)
 -Q  --no-ask-user (never prompt the user)
@@ -61,7 +62,7 @@ Agent dispatch    prompt: 3 lines: "refactor the auth…"
   prompts. `C-c C-c` stores the prompt and returns to the menu; `C-c C-k`
   aborts.
 - `-C` picks the source directory interactively (passed to `copilot -C`).
-- `-a`/`-A`/`-Y`/`-Q`/`-p`/`-E`/`-n` toggle `--autopilot`,
+- `-a`/`-l`/`-A`/`-Y`/`-Q`/`-p`/`-E`/`-n` toggle `--autopilot`, `--plan`,
   `--allow-all-tools`, `--allow-all`, `--no-ask-user`, non-interactive mode,
   reasoning effort, and the task (window) name.
 - **For a fully unattended agent**, `--autopilot` alone is not enough — it only

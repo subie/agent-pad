@@ -74,6 +74,12 @@
               '("--autopilot" "--allow-all" "--allow-all-tools") "/tmp/p")
              "copilot -i \"$(cat /tmp/p)\" --autopilot --allow-all"))))
 
+(ert-deftest agent-pad-test-build-command-plan-mode ()
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--plan") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --plan"))))
+
 (ert-deftest agent-pad-test-build-command-no-ask-user ()
   (let ((agent-pad-copilot-program "copilot"))
     (should (equal

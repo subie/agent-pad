@@ -544,6 +544,8 @@ editing and resumed (with its options intact) on commit/abort."
       (setq parts (append parts (list "-C" (shell-quote-argument dir)))))
     (when (member "--autopilot" args)
       (setq parts (append parts (list "--autopilot"))))
+    (when (member "--plan" args)
+      (setq parts (append parts (list "--plan"))))
     (cond
      ((member "--allow-all" args)
       (setq parts (append parts (list "--allow-all"))))
@@ -585,6 +587,7 @@ editing and resumed (with its options intact) on commit/abort."
      :transient transient--do-suspend)
     (agent-pad--infix-dir)
     ("-a" "--autopilot" "--autopilot")
+    ("-l" "--plan (plan mode)" "--plan")
     ("-A" "--allow-all-tools" "--allow-all-tools")
     ("-Y" "--allow-all (yolo: tools+paths+urls)" "--allow-all")
     ("-Q" "--no-ask-user (never prompt the user)" "--no-ask-user")
