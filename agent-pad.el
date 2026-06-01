@@ -57,6 +57,13 @@ If nil, the directory is read interactively starting from
 `default-directory'."
   :type '(choice (const :tag "Ask each time" nil) directory))
 
+(defcustom agent-pad-attach-on-dispatch t
+  "When non-nil, dispatching via the transient opens an eat buffer.
+The eat buffer is attached to the new agent's tmux window so you can
+do interactive setup before letting it run on its own.  Set to nil to
+dispatch without attaching."
+  :type 'boolean)
+
 ;;;; Setup bin/ PATH
 
 (let ((bin-dir (expand-file-name "bin" (file-name-directory
@@ -561,12 +568,12 @@ editing and resumed (with its options intact) on commit/abort."
                    (if (string-empty-p slug) "copilot" slug))))
          (promptfile (agent-pad--write-prompt-file agent-pad--prompt))
          (cmd (agent-pad--build-copilot-command args promptfile)))
-    (agent-pad--run-agent task cmd)))
+    (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch)))
 
 (defun agent-pad-dispatch-raw (task cmd)
   "Dispatch an arbitrary command CMD as agent TASK."
   (interactive "sTask name: \nsCommand: ")
-  (agent-pad--run-agent task cmd))
+  (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch))
 
 ;;;###autoload (autoload 'agent-pad-dispatch "agent-pad" nil t)
 (transient-define-prefix agent-pad-dispatch ()

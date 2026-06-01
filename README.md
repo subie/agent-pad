@@ -75,6 +75,11 @@ Agent dispatch    prompt: 3 lines: "refactor the auth…"
   auto-derived as a kebab-case slug from the prompt's first line.
 - `r` dispatches **any** shell command verbatim (the non-copilot path).
 
+After dispatching, `c` and `r` open an `eat` buffer attached to the new
+agent's tmux window, so you can do interactive setup before letting it run on
+its own. Set `agent-pad-attach-on-dispatch` to nil to dispatch without
+attaching.
+
 You can also dispatch directly:
 
 - `M-x agent-dispatch` — prompts for task name and command
@@ -123,7 +128,13 @@ All settings via environment variables:
 | `AGENT_STATE_DIR`       | `~/.agent-state`     | Directory for state files                |
 | `AGENT_SILENCE_SECONDS` | `30`                 | Seconds of silence before marking waiting|
 
-Emacs customization group: `M-x customize-group agent-pad`
+Emacs customization group: `M-x customize-group agent-pad`. Notable options:
+
+| Option                          | Default     | Description                                            |
+|---------------------------------|-------------|--------------------------------------------------------|
+| `agent-pad-copilot-program`     | `"copilot"` | Program used by the Copilot dispatch suffix            |
+| `agent-pad-default-directory`   | `nil`       | Default `-C` source dir (nil = ask each time)          |
+| `agent-pad-attach-on-dispatch`  | `t`         | Open an eat buffer on the new agent's window on dispatch |
 
 ## State file format
 
