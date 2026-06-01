@@ -66,6 +66,21 @@
               "/tmp/p")
              "copilot -i \"$(cat /tmp/p)\" -C /src/proj --autopilot --allow-all-tools --effort high"))))
 
+(ert-deftest agent-pad-test-build-command-allow-all-supersedes-tools ()
+  ;; --allow-all subsumes --allow-all-tools; only --allow-all is emitted.
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command
+              '("--autopilot" "--allow-all" "--allow-all-tools") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --autopilot --allow-all"))))
+
+(ert-deftest agent-pad-test-build-command-no-ask-user ()
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command
+              '("--autopilot" "--allow-all" "--no-ask-user") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --autopilot --allow-all --no-ask-user"))))
+
 (ert-deftest agent-pad-test-build-command-respects-program-custom ()
   (let ((agent-pad-copilot-program "/opt/bin/copilot"))
     (should (string-prefix-p "/opt/bin/copilot -i "

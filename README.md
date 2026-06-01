@@ -46,6 +46,8 @@ Agent dispatch    prompt: 3 lines: "refactor the auth…"
 -C  Source dir
 -a  --autopilot
 -A  --allow-all-tools
+-Y  --allow-all (yolo: tools+paths+urls)
+-Q  --no-ask-user (never prompt the user)
 -p  Non-interactive (-p, default -i)
 -E  --effort
 -n  Task name
@@ -59,8 +61,14 @@ Agent dispatch    prompt: 3 lines: "refactor the auth…"
   prompts. `C-c C-c` stores the prompt and returns to the menu; `C-c C-k`
   aborts.
 - `-C` picks the source directory interactively (passed to `copilot -C`).
-- `-a`/`-A`/`-p`/`-E`/`-n` toggle `--autopilot`, `--allow-all-tools`,
-  non-interactive mode, reasoning effort, and the task (window) name.
+- `-a`/`-A`/`-Y`/`-Q`/`-p`/`-E`/`-n` toggle `--autopilot`,
+  `--allow-all-tools`, `--allow-all`, `--no-ask-user`, non-interactive mode,
+  reasoning effort, and the task (window) name.
+- **For a fully unattended agent**, `--autopilot` alone is not enough — it only
+  sets the mode and the agent still asks "yes?" before each tool. Combine it
+  with `-A` (`--allow-all-tools`) or `-Y` (`--allow-all`, which also allows all
+  paths and URLs), and optionally `-Q` (`--no-ask-user`) so it never stops to
+  ask. `-Y` supersedes `-A`.
 - `c` launches a Copilot agent built from the options above. The prompt is
   written to a temp file and referenced as `"$(cat <file>)"`, so shell
   metacharacters in the prompt stay inert. When the task name is blank it is
