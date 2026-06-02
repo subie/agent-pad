@@ -43,8 +43,12 @@ cat > "$wrapper" <<'WRAPPER_HEAD'
 WRAPPER_HEAD
 cat >> "$wrapper" <<WRAPPER_BODY
 source "$SCRIPT_DIR/agent-lib.sh"
-# Discover our own window ID
-_AQ_WID=\$(tmux display -p '#{window_id}' 2>/dev/null || true)
+# Discover our own window ID.  Resolve it from \$TMUX_PANE (the pane tmux
+# assigns to this wrapper) rather than a bare 'tmux display', which would
+# report the *active client's* window and record the wrong id when several
+# agents launch around the same time.
+_AQ_WID=\$(tmux display -p -t "\${TMUX_PANE:-}" '#{window_id}' 2>/dev/null || true)
+[[ -n "\$_AQ_WID" ]] || _AQ_WID=\$(tmux display -p '#{window_id}' 2>/dev/null || true)
 # Write initial state with window ID
 agent_write_state "$task" "running" "" "\$_AQ_WID"
 eval "\$(cat "$cmdfile")"

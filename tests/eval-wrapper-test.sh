@@ -46,4 +46,34 @@ code=$?
 set -e
 check "exit code propagates through eval" "7" "$code"
 
+# 4. Window-id discovery resolves the wrapper's OWN window via $TMUX_PANE,
+#    not the active client's window.  This is the regression guard for the
+#    "RET jumps to the last/active window" bug: a bare `tmux display` reports
+#    the active client's window, so launching while another window is focused
+#    records the wrong id.  Requires a tmux server; skipped otherwise.
+if command -v tmux >/dev/null 2>&1 && tmux list-sessions >/dev/null 2>&1; then
+  sess="agentpad-widtest-$$"
+  tmux new-session -d -s "$sess" -x 80 -y 24 'sleep 30'
+  # Make a *second* window active so a bare display would return the wrong id.
+  tmux new-window -t "$sess" 'sleep 30'
+  outfile="$tmpdir/widout"
+  # Discovery snippet mirrors bin/agent-start.
+  read -r -d '' snippet <<'SNIP' || true
+_AQ_WID=$(tmux display -p -t "${TMUX_PANE:-}" '#{window_id}' 2>/dev/null || true)
+[[ -n "$_AQ_WID" ]] || _AQ_WID=$(tmux display -p '#{window_id}' 2>/dev/null || true)
+printf '%s' "$_AQ_WID" > OUTFILE_PLACEHOLDER
+SNIP
+  snippet=${snippet//OUTFILE_PLACEHOLDER/$outfile}
+  snipfile="$tmpdir/snip.sh"
+  printf '%s' "$snippet" > "$snipfile"
+  # Launch the snippet in its own NEW window and capture that window's real id.
+  realwid=$(tmux new-window -t "$sess" -P -F '#{window_id}' "bash '$snipfile'")
+  sleep 0.5
+  discovered=$(cat "$outfile" 2>/dev/null || true)
+  check "window-id discovery resolves own window via TMUX_PANE" "$realwid" "$discovered"
+  tmux kill-session -t "$sess" 2>/dev/null || true
+else
+  echo "skip - window-id discovery test (no tmux server)"
+fi
+
 exit $fail
