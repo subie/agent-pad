@@ -76,4 +76,46 @@ else
   echo "skip - window-id discovery test (no tmux server)"
 fi
 
+# 5. agent_rename_window prefers an explicit window id over the stored one.
+#    Regression guard for "windows rewritten with the wrong task name": when
+#    the wrapper passes its authoritative pane-derived id, the rename must
+#    target THAT window, never a stale/wrong id in the state file.  Uses a
+#    fake `tmux` on PATH to capture the rename target; no tmux server needed.
+lib="$(cd "$(dirname "$0")/.." && pwd)/bin/agent-lib.sh"
+fakebin="$tmpdir/fakebin"
+mkdir -p "$fakebin"
+cat > "$fakebin/tmux" <<FAKE
+#!/usr/bin/env bash
+# Record only rename-window invocations: "<target>|<name>".
+if [[ "\$1" == "rename-window" ]]; then
+  # args: rename-window -t <target> <name>
+  printf '%s|%s\n' "\$3" "\$4" >> "$tmpdir/rename.log"
+fi
+exit 0
+FAKE
+chmod +x "$fakebin/tmux"
+: > "$tmpdir/rename.log"
+(
+  export AGENT_STATE_DIR="$tmpdir/state"
+  mkdir -p "$AGENT_STATE_DIR"
+  # Stored id is deliberately WRONG (@99) to prove it is not used.
+  printf 'running|mytask|0||@99' > "$AGENT_STATE_DIR/mytask"
+  PATH="$fakebin:$PATH"
+  source "$lib"
+  agent_rename_window "mytask" "done" "@42"
+)
+rename_line=$(cat "$tmpdir/rename.log")
+check "agent_rename_window targets explicit id, not stored id" "@42|✓  mytask" "$rename_line"
+
+# 6. agent_rename_window falls back to the stored id when none is supplied.
+: > "$tmpdir/rename.log"
+(
+  export AGENT_STATE_DIR="$tmpdir/state"
+  PATH="$fakebin:$PATH"
+  source "$lib"
+  agent_rename_window "mytask" "blocked"
+)
+rename_line2=$(cat "$tmpdir/rename.log")
+check "agent_rename_window falls back to stored id" "@99|🔴 mytask" "$rename_line2"
+
 exit $fail

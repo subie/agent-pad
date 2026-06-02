@@ -52,10 +52,12 @@ agent_read_state() {
 }
 
 agent_rename_window() {
-  local task="$1" status="$2"
+  local task="$1" status="$2" wid="${3:-}"
   local icon="${AGENT_ICONS[$status]:-⏳}"
-  local wid
-  wid=$(agent_get_window_id "$task")
+  # Prefer an explicitly supplied window id (the caller's authoritative,
+  # pane-derived id) over the stored one, so a rename can never target the
+  # wrong window even if the state file is stale.
+  [[ -n "$wid" ]] || wid=$(agent_get_window_id "$task")
   if [[ -n "$wid" ]]; then
     tmux rename-window -t "$wid" "${icon} ${task}" 2>/dev/null
   fi

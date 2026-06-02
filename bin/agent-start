@@ -55,10 +55,10 @@ eval "\$(cat "$cmdfile")"
 exit_code=\$?
 if [[ \$exit_code -eq 0 ]]; then
   agent_write_state "$task" "done" "exited successfully" "\$_AQ_WID"
-  agent_rename_window "$task" "done"
+  agent_rename_window "$task" "done" "\$_AQ_WID"
 else
   agent_write_state "$task" "blocked" "exited with code \$exit_code" "\$_AQ_WID"
-  agent_rename_window "$task" "blocked"
+  agent_rename_window "$task" "blocked" "\$_AQ_WID"
 fi
 echo ""
 echo "=== agent exited (code \$exit_code), press enter to close ==="
