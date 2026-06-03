@@ -246,5 +246,21 @@
                        (regexp-quote (shell-quote-argument "@7")))
                captured)))))
 
+(ert-deftest agent-pad-test-tmux-attach-cmd-slugifies-session-name ()
+  "Session name must be slugified so spaces/specials never reach tmux -s."
+  (let* ((agent-pad-session "agents")
+         (cmd (agent-pad--tmux-attach-cmd "@21" "diagnostics for slow evals")))
+    ;; Grouped onto the agents session and targets the right window.
+    (should (string-match-p "new-session -t agents" cmd))
+    (should (string-match-p
+             (concat "select-window -t " (regexp-quote (shell-quote-argument "@21")))
+             cmd))
+    ;; The -s argument is a clean kebab slug: no spaces, no shell quoting needed.
+    (should (string-match-p
+             (format "-s eat-diagnostics-for-slow-evals-%s " (emacs-pid))
+             cmd))
+    ;; And crucially the raw spaced task name does not appear in the session arg.
+    (should-not (string-match-p "eat-diagnostics for slow evals" cmd))))
+
 (provide 'agent-pad-test)
 ;;; agent-pad-test.el ends here

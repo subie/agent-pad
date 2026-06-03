@@ -260,8 +260,10 @@ Returns list of (task status age-string note) entries."
 (defun agent-pad--tmux-attach-cmd (window-id task)
   "Build a tmux command that attaches to WINDOW-ID via a grouped session.
 Uses a temporary grouped session so eat gets independent sizing
-from the main tmux client."
-  (let ((eat-session (format "eat-%s-%s" task (emacs-pid))))
+from the main tmux client.  The session name is slugified so task
+names containing spaces or special characters do not leak into the
+tmux session name."
+  (let ((eat-session (format "eat-%s-%s" (agent-pad--slugify task) (emacs-pid))))
     (format "TMUX='' exec tmux new-session -t %s -s %s \\; set-option destroy-unattached on \\; select-window -t %s"
             (shell-quote-argument agent-pad-session)
             (shell-quote-argument eat-session)
