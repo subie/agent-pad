@@ -107,6 +107,7 @@ copilot -i "fix the flaky tests in src/api"
 | `+`   | Open the dispatch transient (`agent-pad-dispatch`) |
 | `g`   | Refresh                                   |
 | `d`   | Mark done and clean up                    |
+| `r`   | Rename agent task                         |
 | `k`   | Kill agent                                |
 | `q`   | Quit                                      |
 
@@ -219,4 +220,5 @@ agent-signal blocked fix-tests "waiting on test credentials"
 ```bash
 agent-clean              # remove all done state files and windows
 agent-stop auth-refactor # kill a specific agent
+agent-rename old new     # rename a task (state file + tmux window)
 ```

@@ -51,6 +51,23 @@ agent_read_state() {
   [[ -f "$f" ]] && cat "$f"
 }
 
+# Print the task name whose state file records WID as its window id, if any.
+# Used by the run wrapper to discover its *current* name (the task may have
+# been renamed while running) so exit-time state writes target the right file.
+agent_task_for_window() {
+  local wid="$1"
+  [[ -n "$wid" ]] || return 0
+  agent_ensure_state_dir
+  local f
+  for f in "${AGENT_STATE_DIR}"/*; do
+    [[ -f "$f" ]] || continue
+    if [[ "$(awk -F'|' '{print $5}' "$f")" == "$wid" ]]; then
+      basename "$f"
+      return 0
+    fi
+  done
+}
+
 agent_rename_window() {
   local task="$1" status="$2" wid="${3:-}"
   local icon="${AGENT_ICONS[$status]:-⏳}"
@@ -66,6 +83,23 @@ agent_rename_window() {
 agent_task_exists() {
   local task="$1"
   [[ -f "${AGENT_STATE_DIR}/${task}" ]]
+}
+
+# Rename a task: move its state file OLD -> NEW (rewriting the task field) and
+# rename its tmux window to match, keeping the current status icon.  The window
+# id is preserved, so any attached eat buffer / tmux client stays connected.
+agent_rename_task() {
+  local old="$1" new="$2"
+  local f="${AGENT_STATE_DIR}/${old}"
+  [[ -f "$f" ]] || return 1
+  local status timestamp note wid
+  IFS='|' read -r status _ timestamp note wid < "$f" || true
+  local tmp
+  tmp=$(mktemp "${AGENT_STATE_DIR}/.${new}.XXXXXX")
+  echo "${status}|${new}|${timestamp}|${note}|${wid}" > "$tmp"
+  mv -f "$tmp" "${AGENT_STATE_DIR}/${new}"
+  rm -f "$f"
+  agent_rename_window "$new" "$status" "$wid"
 }
 
 agent_list_tasks() {

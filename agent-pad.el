@@ -344,6 +344,33 @@ Requires Emacs to be running inside a tmux client."
         (remhash task agent-pad--previous-states)
         (agent-pad-refresh)))))
 
+(defun agent-pad-rename ()
+  "Rename the selected agent task.
+Updates the state file and tmux window, migrates status bookkeeping,
+and renames any open eat buffer so `agent-pad-jump' stays consistent."
+  (interactive)
+  (when-let ((entry (tabulated-list-get-entry)))
+    (let* ((old (aref entry 1))
+           (new (string-trim
+                 (read-string (format "Rename '%s' to: " old) old))))
+      (cond
+       ((string-empty-p new) (user-error "Task name must not be empty"))
+       ((string= old new) (message "Unchanged"))
+       (t
+        (let ((result (string-trim
+                       (shell-command-to-string
+                        (format "agent-rename %s %s 2>&1"
+                                (shell-quote-argument old)
+                                (shell-quote-argument new))))))
+          (when-let ((state (gethash old agent-pad--previous-states)))
+            (puthash new state agent-pad--previous-states))
+          (remhash old agent-pad--previous-states)
+          (when-let ((buf (get-buffer (format "*agent:%s*" old))))
+            (with-current-buffer buf
+              (rename-buffer (format "*agent:%s*" new) t)))
+          (message "%s" result)
+          (agent-pad-refresh)))))))
+
 (defun agent-pad-dispatch-from-queue ()
   "Dispatch a new agent from the queue buffer."
   (interactive)
@@ -356,6 +383,7 @@ Requires Emacs to be running inside a tmux client."
     (define-key map (kbd "+")   #'agent-pad-dispatch)
     (define-key map (kbd "g")   #'agent-pad-refresh)
     (define-key map (kbd "d")   #'agent-pad-mark-done)
+    (define-key map (kbd "r")   #'agent-pad-rename)
     (define-key map (kbd "k")   #'agent-pad-kill)
     map)
   "Keymap for `agent-pad-mode'.")
@@ -569,13 +597,19 @@ editing and resumed (with its options intact) on commit/abort."
   (when (string-empty-p (string-trim agent-pad--prompt))
     (user-error "No prompt set — press \"e\" to compose one"))
   (let* ((task-arg (transient-arg-value "--task=" args))
+         (derived (let ((slug (agent-pad--slugify
+                               (car (split-string agent-pad--prompt "\n" t)))))
+                    (if (string-empty-p slug) "copilot" slug)))
          (task (if (and task-arg (not (string-empty-p task-arg)))
                    task-arg
-                 (let ((slug (agent-pad--slugify
-                              (car (split-string agent-pad--prompt "\n" t)))))
-                   (if (string-empty-p slug) "copilot" slug))))
+                 ;; No -n supplied: prompt for a name (prefilled with a slug
+                 ;; derived from the prompt) rather than silently using the
+                 ;; inscrutable prompt text, so every task gets a real name.
+                 (string-trim (read-string "Task name: " derived))))
          (promptfile (agent-pad--write-prompt-file agent-pad--prompt))
          (cmd (agent-pad--build-copilot-command args promptfile)))
+    (when (string-empty-p task)
+      (user-error "Task name is required"))
     (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch)))
 
 (defun agent-pad-dispatch-raw (task cmd)

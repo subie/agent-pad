@@ -118,4 +118,37 @@ check "agent_rename_window targets explicit id, not stored id" "@42|✓  mytask"
 rename_line2=$(cat "$tmpdir/rename.log")
 check "agent_rename_window falls back to stored id" "@99|🔴 mytask" "$rename_line2"
 
+# 7. agent_rename_task moves the state file, rewrites the task field, and
+#    renames the tmux window (keeping the current status icon and window id).
+: > "$tmpdir/rename.log"
+state7="$tmpdir/state7"
+(
+  export AGENT_STATE_DIR="$state7"
+  mkdir -p "$AGENT_STATE_DIR"
+  printf 'waiting|old-name|123|needs review|@7' > "$AGENT_STATE_DIR/old-name"
+  PATH="$fakebin:$PATH"
+  source "$lib"
+  agent_rename_task "old-name" "new-name"
+)
+check "agent_rename_task removes old state file" "absent" \
+  "$([[ -f "$state7/old-name" ]] && echo present || echo absent)"
+check "agent_rename_task writes new state file with rewritten task field" \
+  "waiting|new-name|123|needs review|@7" "$(cat "$state7/new-name" 2>/dev/null)"
+check "agent_rename_task renames window with status icon and stored id" \
+  "@7|❓ new-name" "$(cat "$tmpdir/rename.log")"
+
+# 8. agent_task_for_window resolves the *current* task name from a window id,
+#    which the run wrapper relies on after a rename.
+state8="$tmpdir/state8"
+(
+  export AGENT_STATE_DIR="$state8"
+  mkdir -p "$AGENT_STATE_DIR"
+  printf 'running|alpha|0||@1'  > "$AGENT_STATE_DIR/alpha"
+  printf 'running|beta|0||@2'   > "$AGENT_STATE_DIR/beta"
+  source "$lib"
+  printf '%s' "$(agent_task_for_window "@2")"
+) > "$tmpdir/tfw.out"
+check "agent_task_for_window resolves task by window id" "beta" \
+  "$(cat "$tmpdir/tfw.out")"
+
 exit $fail

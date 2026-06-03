@@ -53,12 +53,16 @@ _AQ_WID=\$(tmux display -p -t "\${TMUX_PANE:-}" '#{window_id}' 2>/dev/null || tr
 agent_write_state "$task" "running" "" "\$_AQ_WID"
 eval "\$(cat "$cmdfile")"
 exit_code=\$?
+# The task may have been renamed while running; resolve our current name from
+# our window id so the exit-time state write updates the right file.
+cur_task=\$(agent_task_for_window "\$_AQ_WID")
+[[ -n "\$cur_task" ]] || cur_task="$task"
 if [[ \$exit_code -eq 0 ]]; then
-  agent_write_state "$task" "done" "exited successfully" "\$_AQ_WID"
-  agent_rename_window "$task" "done" "\$_AQ_WID"
+  agent_write_state "\$cur_task" "done" "exited successfully" "\$_AQ_WID"
+  agent_rename_window "\$cur_task" "done" "\$_AQ_WID"
 else
-  agent_write_state "$task" "blocked" "exited with code \$exit_code" "\$_AQ_WID"
-  agent_rename_window "$task" "blocked" "\$_AQ_WID"
+  agent_write_state "\$cur_task" "blocked" "exited with code \$exit_code" "\$_AQ_WID"
+  agent_rename_window "\$cur_task" "blocked" "\$_AQ_WID"
 fi
 echo ""
 echo "=== agent exited (code \$exit_code), press enter to close ==="

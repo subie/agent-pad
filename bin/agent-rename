@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+# agent-rename — rename an agent task (state file + tmux window)
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+source "$SCRIPT_DIR/agent-lib.sh"
+
+usage() {
+  echo "Usage: agent-rename <old-name> <new-name>"
+  echo ""
+  echo "Rename an agent's task: its state file and tmux window are updated."
+  echo "The window id is preserved, so any attached buffer stays connected."
+  exit 1
+}
+
+[[ $# -ge 2 ]] || usage
+
+old="$1"
+new="$2"
+
+# Task names double as state-file names and are stored in a '|'-delimited
+# record, so reject the two characters that would corrupt either.
+case "$new" in
+  */*|*'|'*) echo "Error: name must not contain '/' or '|'" >&2; exit 1 ;;
+  "")        echo "Error: new name must not be empty" >&2; exit 1 ;;
+esac
+
+if [[ "$old" == "$new" ]]; then
+  echo "Nothing to do: names are identical"
+  exit 0
+fi
+
+if ! agent_task_exists "$old"; then
+  echo "Error: task '$old' does not exist" >&2
+  exit 1
+fi
+
+if agent_task_exists "$new"; then
+  echo "Error: task '$new' already exists" >&2
+  exit 1
+fi
+
+agent_rename_task "$old" "$new"
+
+echo "Renamed: $old → $new"
