@@ -80,6 +80,24 @@
              (agent-pad--build-copilot-command '("--plan") "/tmp/p")
              "copilot -i \"$(cat /tmp/p)\" --plan"))))
 
+(ert-deftest agent-pad-test-build-command-autopilot-and-plan-mutually-exclusive ()
+  "copilot crashes if both --autopilot and --plan are passed; never emit both."
+  (let ((agent-pad-copilot-program "copilot"))
+    ;; autopilot wins; --plan is dropped regardless of arg order.
+    (should (equal
+             (agent-pad--build-copilot-command '("--autopilot" "--plan") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --autopilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--plan" "--autopilot") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --autopilot"))))
+
+(ert-deftest agent-pad-test-dispatch-prefix-marks-modes-incompatible ()
+  "The transient must mark --autopilot and --plan as mutually exclusive."
+  (let ((proto (get 'agent-pad-dispatch 'transient--prefix)))
+    (should proto)
+    (should (member '("--autopilot" "--plan")
+                    (oref proto incompatible)))))
+
 (ert-deftest agent-pad-test-build-command-no-ask-user ()
   (let ((agent-pad-copilot-program "copilot"))
     (should (equal

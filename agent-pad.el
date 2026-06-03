@@ -546,7 +546,11 @@ editing and resumed (with its options intact) on commit/abort."
       (setq parts (append parts (list "-C" (shell-quote-argument dir)))))
     (when (member "--autopilot" args)
       (setq parts (append parts (list "--autopilot"))))
-    (when (member "--plan" args)
+    ;; --autopilot and --plan are mutually exclusive modes; copilot errors
+    ;; out if both are passed.  The transient marks them :incompatible, but
+    ;; guard here too so programmatic callers can never emit both.
+    (when (and (member "--plan" args)
+               (not (member "--autopilot" args)))
       (setq parts (append parts (list "--plan"))))
     (cond
      ((member "--allow-all" args)
@@ -582,6 +586,7 @@ editing and resumed (with its options intact) on commit/abort."
 ;;;###autoload (autoload 'agent-pad-dispatch "agent-pad" nil t)
 (transient-define-prefix agent-pad-dispatch ()
   "Dispatch a coding agent into a tmux window."
+  :incompatible '(("--autopilot" "--plan"))
   [:description
    (lambda () (format "Agent dispatch    prompt: %s" (agent-pad--prompt-summary)))
    ["Copilot options"
