@@ -237,22 +237,39 @@ Returns list of (task status age-string note) entries."
     ("blocked" 'agent-pad-blocked)
     (_         'default)))
 
-(defun agent-pad--goto-id (id &optional col)
-  "Move point to the row whose tabulated-list id equals ID.
-Restore COL within the row when given.  If no row matches ID, move
-to `point-min'.  Returns the matched position, or nil."
+(defun agent-pad--row-id ()
+  "Return the tabulated-list id for the row at point.
+Falls back to the start of the line, since the cursor can rest at a
+line's end (e.g. `point-max' after the trailing newline is trimmed)
+where the id text property is absent."
+  (or (tabulated-list-get-id)
+      (save-excursion
+        (beginning-of-line)
+        (tabulated-list-get-id))))
+
+(defun agent-pad--restore-point (id line col)
+  "Restore point to the row whose id equals ID, keeping COL.
+If no row matches ID, fall back to LINE (clamped to the buffer), rather
+than jumping to the top.  Returns the matched position, or nil."
   (let ((target (and id
                      (save-excursion
                        (goto-char (point-min))
                        (let (found)
                          (while (and (not found) (not (eobp)))
-                           (if (equal (tabulated-list-get-id) id)
+                           (if (equal (agent-pad--row-id) id)
                                (setq found (point))
                              (forward-line 1)))
                          found)))))
-    (goto-char (or target (point-min)))
+    (if target
+        (goto-char target)
+      (goto-char (point-min))
+      (forward-line (max 0 (1- (or line 1)))))
     (when col (move-to-column col))
     target))
+
+(defun agent-pad--capture-pos ()
+  "Capture the cursor position as a (ID LINE COL) list for the current point."
+  (list (agent-pad--row-id) (line-number-at-pos) (current-column)))
 
 (defun agent-pad-refresh ()
   "Refresh the agent queue buffer, preserving cursor position."
@@ -260,15 +277,14 @@ to `point-min'.  Returns the matched position, or nil."
   (when-let ((buf (get-buffer "*agent-pad*")))
     (with-current-buffer buf
       (let* ((entries (agent-pad--read-all-state))
-             (col (current-column))
              (windows (get-buffer-window-list buf nil t))
-             ;; Remember which row the buffer and each window sits on, keyed
-             ;; by tabulated-list id, so the cursor stays put across the
-             ;; reprint instead of snapping to the top (position 0).
-             (buf-id (tabulated-list-get-id))
-             (win-ids (mapcar (lambda (w)
+             ;; Remember where the buffer and each window sit, keyed by
+             ;; tabulated-list id (with a line fallback), so the cursor stays
+             ;; put across the reprint instead of snapping to the top.
+             (buf-pos (agent-pad--capture-pos))
+             (win-pos (mapcar (lambda (w)
                                 (cons w (with-selected-window w
-                                          (tabulated-list-get-id))))
+                                          (agent-pad--capture-pos))))
                               windows)))
         (setq tabulated-list-entries entries)
         (tabulated-list-print t)
@@ -285,12 +301,12 @@ to `point-min'.  Returns the matched position, or nil."
         ;; `tabulated-list-print' only restores buffer point; windows where
         ;; the buffer is not selected (e.g. when refreshed from the timer)
         ;; would otherwise reset to the top.
-        (agent-pad--goto-id buf-id col)
-        (dolist (wi win-ids)
-          (when (window-live-p (car wi))
-            (with-selected-window (car wi)
-              (agent-pad--goto-id (cdr wi) col)
-              (set-window-point (car wi) (point)))))))))
+        (apply #'agent-pad--restore-point buf-pos)
+        (dolist (wp win-pos)
+          (when (window-live-p (car wp))
+            (with-selected-window (car wp)
+              (apply #'agent-pad--restore-point (cdr wp))
+              (set-window-point (car wp) (point)))))))))
 
 (defun agent-pad--get-window-id (task)
   "Get the tmux window ID for TASK from its state file."
