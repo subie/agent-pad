@@ -244,7 +244,16 @@ Returns list of (task status age-string note) entries."
     (with-current-buffer buf
       (let ((entries (agent-pad--read-all-state)))
         (setq tabulated-list-entries entries)
-        (tabulated-list-print t)))))
+        (tabulated-list-print t)
+        ;; `tabulated-list-print' terminates every row with a newline,
+        ;; leaving an empty final line the cursor can land on past the
+        ;; last table row.  Drop that trailing newline so end-of-buffer
+        ;; stays on the last row.
+        (let ((inhibit-read-only t))
+          (save-excursion
+            (goto-char (point-max))
+            (when (and (bolp) (not (bobp)))
+              (delete-char -1))))))))
 
 (defun agent-pad--get-window-id (task)
   "Get the tmux window ID for TASK from its state file."
@@ -423,11 +432,16 @@ attached to the agent's tmux window."
   (interactive "sTask name: \nsCommand: ")
   (agent-pad--run-agent task cmd current-prefix-arg))
 
-(defun agent-pad--run-agent (task cmd &optional attach)
+(defun agent-pad--run-agent (task cmd &optional attach dir)
   "Run CMD as agent TASK via agent-start.
-When ATTACH is non-nil, open an eat buffer on the agent's window."
+When ATTACH is non-nil, open an eat buffer on the agent's window.
+When DIR is non-nil and non-empty, start the agent's tmux window in
+that directory so split panes inherit it (matches Copilot's -C)."
   (let ((result (shell-command-to-string
-                 (format "agent-start %s %s 2>&1"
+                 (format "agent-start %s%s %s 2>&1"
+                         (if (and dir (not (string-empty-p dir)))
+                             (format "--cwd %s " (shell-quote-argument dir))
+                           "")
                          (shell-quote-argument task)
                          (shell-quote-argument cmd)))))
     (message "%s" (string-trim result))
@@ -566,10 +580,14 @@ editing and resumed (with its options intact) on commit/abort."
          (effort (transient-arg-value "--effort=" args))
          (non-interactive (member "--non-interactive" args))
          (mode-flag (if non-interactive "-p" "-i"))
-         (parts (list agent-pad-copilot-program
-                      mode-flag
-                      (format "\"$(cat %s)\""
-                              (shell-quote-argument promptfile)))))
+         (parts (list agent-pad-copilot-program)))
+    ;; A prompt file is optional: with --resume the user may simply resume
+    ;; the previous session without supplying any new prompt.
+    (when (and promptfile (not (string-empty-p promptfile)))
+      (setq parts (append parts
+                          (list mode-flag
+                                (format "\"$(cat %s)\""
+                                        (shell-quote-argument promptfile))))))
     (when (and dir (not (string-empty-p dir)))
       (setq parts (append parts (list "-C" (shell-quote-argument dir)))))
     (when (member "--autopilot" args)
@@ -587,6 +605,8 @@ editing and resumed (with its options intact) on commit/abort."
       (setq parts (append parts (list "--allow-all-tools")))))
     (when (member "--no-ask-user" args)
       (setq parts (append parts (list "--no-ask-user"))))
+    (when (member "--resume" args)
+      (setq parts (append parts (list "--resume"))))
     (when (and effort (not (string-empty-p effort)))
       (setq parts (append parts (list "--effort" effort))))
     (string-join parts " ")))
@@ -594,23 +614,30 @@ editing and resumed (with its options intact) on commit/abort."
 (defun agent-pad-dispatch-copilot (&optional args)
   "Dispatch a Copilot agent from the transient ARGS and composed prompt."
   (interactive (list (transient-args 'agent-pad-dispatch)))
-  (when (string-empty-p (string-trim agent-pad--prompt))
-    (user-error "No prompt set — press \"e\" to compose one"))
-  (let* ((task-arg (transient-arg-value "--task=" args))
-         (derived (let ((slug (agent-pad--slugify
-                               (car (split-string agent-pad--prompt "\n" t)))))
-                    (if (string-empty-p slug) "copilot" slug)))
-         (task (if (and task-arg (not (string-empty-p task-arg)))
-                   task-arg
-                 ;; No -n supplied: prompt for a name (prefilled with a slug
-                 ;; derived from the prompt) rather than silently using the
-                 ;; inscrutable prompt text, so every task gets a real name.
-                 (string-trim (read-string "Task name: " derived))))
-         (promptfile (agent-pad--write-prompt-file agent-pad--prompt))
-         (cmd (agent-pad--build-copilot-command args promptfile)))
-    (when (string-empty-p task)
-      (user-error "Task name is required"))
-    (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch)))
+  (let* ((resume (member "--resume" args))
+         (prompt (string-trim agent-pad--prompt))
+         (has-prompt (not (string-empty-p prompt))))
+    ;; --resume continues a previous session, so a prompt is optional.
+    (when (and (not has-prompt) (not resume))
+      (user-error "No prompt set — press \"e\" to compose one"))
+    (let* ((task-arg (transient-arg-value "--task=" args))
+           (derived (let ((slug (and has-prompt
+                                     (agent-pad--slugify
+                                      (car (split-string agent-pad--prompt "\n" t))))))
+                      (if (or (null slug) (string-empty-p slug)) "copilot" slug)))
+           (task (if (and task-arg (not (string-empty-p task-arg)))
+                     task-arg
+                   ;; No -n supplied: prompt for a name (prefilled with a slug
+                   ;; derived from the prompt) rather than silently using the
+                   ;; inscrutable prompt text, so every task gets a real name.
+                   (string-trim (read-string "Task name: " derived))))
+           (promptfile (when has-prompt
+                         (agent-pad--write-prompt-file agent-pad--prompt)))
+           (dir (transient-arg-value "-C=" args))
+           (cmd (agent-pad--build-copilot-command args promptfile)))
+      (when (string-empty-p task)
+        (user-error "Task name is required"))
+      (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch dir))))
 
 (defun agent-pad-dispatch-raw (task cmd)
   "Dispatch an arbitrary command CMD as agent TASK."
@@ -632,6 +659,7 @@ editing and resumed (with its options intact) on commit/abort."
     ("-A" "--allow-all-tools" "--allow-all-tools")
     ("-Y" "--allow-all (yolo: tools+paths+urls)" "--allow-all")
     ("-Q" "--no-ask-user (never prompt the user)" "--no-ask-user")
+    ("-R" "--resume (resume last session)" "--resume")
     ("-p" "Non-interactive (-p, default -i)" "--non-interactive")
     (agent-pad--infix-effort)
     (agent-pad--infix-task)]]

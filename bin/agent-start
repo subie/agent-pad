@@ -6,15 +6,28 @@ SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 source "$SCRIPT_DIR/agent-lib.sh"
 
 usage() {
-  echo "Usage: agent-start <task-name> <command>"
+  echo "Usage: agent-start [--cwd <dir>] <task-name> <command>"
   echo ""
   echo "Start an agent in a new tmux window."
+  echo ""
+  echo "Options:"
+  echo "  --cwd, -C <dir>   Working directory for the agent's tmux window."
   echo ""
   echo "Examples:"
   echo "  agent-start auth-refactor \"copilot -p 'refactor auth'\""
   echo "  agent-start fix-tests \"copilot -i 'fix flaky tests'\""
+  echo "  agent-start --cwd /src/proj fix-tests \"copilot -i 'fix tests'\""
   exit 1
 }
+
+# Optional leading working-directory option.  agent-pad passes this so the
+# tmux window's cwd matches the Copilot "-C" source directory, ensuring panes
+# split off the window (which inherit the pane cwd) start in the same place.
+cwd=""
+if [[ "${1:-}" == "--cwd" || "${1:-}" == "-C" ]]; then
+  cwd="${2:-}"
+  shift 2 || usage
+fi
 
 [[ $# -ge 2 ]] || usage
 
@@ -71,7 +84,12 @@ rm -f "$wrapper" "$cmdfile"
 WRAPPER_BODY
 chmod +x "$wrapper"
 
-# Create window (wrapper writes state with its own window ID)
-tmux new-window -t "$AGENT_SESSION" -n "⏳ ${task}" "$wrapper"
+# Create window (wrapper writes state with its own window ID).  When a cwd was
+# provided, start the window there so split panes inherit the right directory.
+if [[ -n "$cwd" ]]; then
+  tmux new-window -t "$AGENT_SESSION" -c "$cwd" -n "⏳ ${task}" "$wrapper"
+else
+  tmux new-window -t "$AGENT_SESSION" -n "⏳ ${task}" "$wrapper"
+fi
 
 echo "Started: $task"

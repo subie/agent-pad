@@ -141,12 +141,53 @@
       (should-error (agent-pad-dispatch-copilot '()) :type 'user-error)
       (should-not ran))))
 
+(ert-deftest agent-pad-test-dispatch-empty-prompt-errors-without-resume ()
+  "An empty prompt is rejected when --resume is not supplied."
+  (let ((agent-pad--prompt "   ")
+        (agent-pad-copilot-program "copilot")
+        (ran nil))
+    (cl-letf (((symbol-function 'agent-pad--run-agent)
+               (lambda (&rest _) (setq ran t))))
+      (should-error (agent-pad-dispatch-copilot '()) :type 'user-error)
+      (should-not ran))))
+
+(ert-deftest agent-pad-test-dispatch-resume-allows-empty-prompt ()
+  "With --resume, an empty prompt is allowed and no prompt file is written."
+  (let ((agent-pad--prompt "")
+        (agent-pad-copilot-program "copilot")
+        captured-cmd captured-task)
+    (cl-letf (((symbol-function 'read-string)
+               (lambda (_prompt &optional initial &rest _)
+                 (should (equal initial "copilot"))
+                 "resumed"))
+              ((symbol-function 'agent-pad--write-prompt-file)
+               (lambda (&rest _) (error "should not write a prompt file")))
+              ((symbol-function 'agent-pad--run-agent)
+               (lambda (task cmd &rest _)
+                 (setq captured-task task captured-cmd cmd))))
+      (agent-pad-dispatch-copilot '("--resume"))
+      (should (equal captured-task "resumed"))
+      (should (equal captured-cmd "copilot --resume")))))
+
 (ert-deftest agent-pad-test-build-command-no-ask-user ()
   (let ((agent-pad-copilot-program "copilot"))
     (should (equal
              (agent-pad--build-copilot-command
               '("--autopilot" "--allow-all" "--no-ask-user") "/tmp/p")
              "copilot -i \"$(cat /tmp/p)\" --autopilot --allow-all --no-ask-user"))))
+
+(ert-deftest agent-pad-test-build-command-resume ()
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--resume") "/tmp/p")
+             "copilot -i \"$(cat /tmp/p)\" --resume"))))
+
+(ert-deftest agent-pad-test-build-command-resume-without-prompt ()
+  "With --resume and no prompt file, omit the -i/-p prompt entirely."
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--resume") nil)
+             "copilot --resume"))))
 
 (ert-deftest agent-pad-test-build-command-respects-program-custom ()
   (let ((agent-pad-copilot-program "/opt/bin/copilot"))
@@ -294,6 +335,29 @@
     (should (equal (agent-pad--derive-status "@gone" "running") "running"))))
 
 ;;;; agent-pad--tmux-switch
+
+(ert-deftest agent-pad-test-run-agent-passes-cwd ()
+  "When DIR is supplied, agent-start is invoked with --cwd <dir>."
+  (let ((captured nil))
+    (cl-letf (((symbol-function 'shell-command-to-string)
+               (lambda (cmd) (setq captured cmd) ""))
+              ((symbol-function 'agent-pad-refresh) (lambda () nil)))
+      (agent-pad--run-agent "mytask" "copilot -i x" nil "/src/proj")
+      (should (string-match-p
+               (concat "agent-start --cwd "
+                       (regexp-quote (shell-quote-argument "/src/proj"))
+                       " ")
+               captured)))))
+
+(ert-deftest agent-pad-test-run-agent-omits-cwd-when-absent ()
+  "With no DIR, agent-start is invoked without a --cwd option."
+  (let ((captured nil))
+    (cl-letf (((symbol-function 'shell-command-to-string)
+               (lambda (cmd) (setq captured cmd) ""))
+              ((symbol-function 'agent-pad-refresh) (lambda () nil)))
+      (agent-pad--run-agent "mytask" "copilot -i x" nil nil)
+      (should-not (string-match-p "--cwd" captured))
+      (should (string-match-p "agent-start mytask" captured)))))
 
 (ert-deftest agent-pad-test-tmux-switch-builds-command ()
   (let ((agent-pad-session "agents")
