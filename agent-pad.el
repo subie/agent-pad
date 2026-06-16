@@ -237,12 +237,39 @@ Returns list of (task status age-string note) entries."
     ("blocked" 'agent-pad-blocked)
     (_         'default)))
 
+(defun agent-pad--goto-id (id &optional col)
+  "Move point to the row whose tabulated-list id equals ID.
+Restore COL within the row when given.  If no row matches ID, move
+to `point-min'.  Returns the matched position, or nil."
+  (let ((target (and id
+                     (save-excursion
+                       (goto-char (point-min))
+                       (let (found)
+                         (while (and (not found) (not (eobp)))
+                           (if (equal (tabulated-list-get-id) id)
+                               (setq found (point))
+                             (forward-line 1)))
+                         found)))))
+    (goto-char (or target (point-min)))
+    (when col (move-to-column col))
+    target))
+
 (defun agent-pad-refresh ()
-  "Refresh the agent queue buffer."
+  "Refresh the agent queue buffer, preserving cursor position."
   (interactive)
   (when-let ((buf (get-buffer "*agent-pad*")))
     (with-current-buffer buf
-      (let ((entries (agent-pad--read-all-state)))
+      (let* ((entries (agent-pad--read-all-state))
+             (col (current-column))
+             (windows (get-buffer-window-list buf nil t))
+             ;; Remember which row the buffer and each window sits on, keyed
+             ;; by tabulated-list id, so the cursor stays put across the
+             ;; reprint instead of snapping to the top (position 0).
+             (buf-id (tabulated-list-get-id))
+             (win-ids (mapcar (lambda (w)
+                                (cons w (with-selected-window w
+                                          (tabulated-list-get-id))))
+                              windows)))
         (setq tabulated-list-entries entries)
         (tabulated-list-print t)
         ;; `tabulated-list-print' terminates every row with a newline,
@@ -253,7 +280,17 @@ Returns list of (task status age-string note) entries."
           (save-excursion
             (goto-char (point-max))
             (when (and (bolp) (not (bobp)))
-              (delete-char -1))))))))
+              (delete-char -1))))
+        ;; Restore the buffer's point and, crucially, every window's point.
+        ;; `tabulated-list-print' only restores buffer point; windows where
+        ;; the buffer is not selected (e.g. when refreshed from the timer)
+        ;; would otherwise reset to the top.
+        (agent-pad--goto-id buf-id col)
+        (dolist (wi win-ids)
+          (when (window-live-p (car wi))
+            (with-selected-window (car wi)
+              (agent-pad--goto-id (cdr wi) col)
+              (set-window-point (car wi) (point)))))))))
 
 (defun agent-pad--get-window-id (task)
   "Get the tmux window ID for TASK from its state file."
