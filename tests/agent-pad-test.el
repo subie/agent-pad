@@ -102,6 +102,7 @@
   "With no --task=, dispatch prompts for a name (prefilled with a slug)."
   (let ((agent-pad--prompt "Do the thing")
         (agent-pad-copilot-program "copilot")
+        (agent-pad--last-dispatched-prompt nil)
         captured)
     (cl-letf (((symbol-function 'read-string)
                (lambda (_prompt &optional initial &rest _)
@@ -118,6 +119,7 @@
   "With --task= supplied, dispatch uses it verbatim and never prompts."
   (let ((agent-pad--prompt "Do the thing")
         (agent-pad-copilot-program "copilot")
+        (agent-pad--last-dispatched-prompt nil)
         captured)
     (cl-letf (((symbol-function 'read-string)
                (lambda (&rest _) (error "should not prompt for a task name")))
@@ -169,6 +171,62 @@
       (should (equal captured-task "resumed"))
       (should (equal captured-cmd "copilot --resume")))))
 
+(ert-deftest agent-pad-test-dispatch-resume-id-allows-empty-prompt ()
+  "With --resume=ID, an empty prompt is allowed and no prompt file is written."
+  (let ((agent-pad--prompt "")
+        (agent-pad-copilot-program "copilot")
+        captured-cmd)
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "resumed"))
+              ((symbol-function 'agent-pad--write-prompt-file)
+               (lambda (&rest _) (error "should not write a prompt file")))
+              ((symbol-function 'agent-pad--run-agent)
+               (lambda (_task cmd &rest _) (setq captured-cmd cmd))))
+      (agent-pad-dispatch-copilot '("--resume=sess9"))
+      (should (equal captured-cmd "copilot --resume sess9")))))
+
+(ert-deftest agent-pad-test-dispatch-resume-ignores-prompt ()
+  "With --resume, a set prompt is ignored and never written to a file."
+  (let ((agent-pad--prompt "Stale prompt")
+        (agent-pad-copilot-program "copilot")
+        captured-cmd)
+    (cl-letf (((symbol-function 'read-string) (lambda (&rest _) "resumed"))
+              ((symbol-function 'agent-pad--write-prompt-file)
+               (lambda (&rest _) (error "should not write a prompt file")))
+              ((symbol-function 'agent-pad--run-agent)
+               (lambda (_task cmd &rest _) (setq captured-cmd cmd))))
+      (agent-pad-dispatch-copilot '("--resume"))
+      (should (equal captured-cmd "copilot --resume")))))
+
+(ert-deftest agent-pad-test-dispatch-warns-on-repeated-prompt ()
+  "Re-dispatching an unchanged prompt asks for confirmation and aborts on no."
+  (let ((agent-pad--prompt "Same prompt")
+        (agent-pad-copilot-program "copilot")
+        (agent-pad--last-dispatched-prompt "Same prompt")
+        (asked nil)
+        (ran nil))
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) (setq asked t) nil))
+              ((symbol-function 'read-string) (lambda (&rest _) "task"))
+              ((symbol-function 'agent-pad--write-prompt-file) (lambda (_p) "/tmp/p"))
+              ((symbol-function 'agent-pad--run-agent)
+               (lambda (&rest _) (setq ran t))))
+      (should-error (agent-pad-dispatch-copilot '()) :type 'user-error)
+      (should asked)
+      (should-not ran))))
+
+(ert-deftest agent-pad-test-dispatch-repeated-prompt-proceeds-on-yes ()
+  "Confirming the repeated-prompt warning dispatches as normal."
+  (let ((agent-pad--prompt "Same prompt")
+        (agent-pad-copilot-program "copilot")
+        (agent-pad--last-dispatched-prompt "Same prompt")
+        (ran nil))
+    (cl-letf (((symbol-function 'y-or-n-p) (lambda (&rest _) t))
+              ((symbol-function 'read-string) (lambda (&rest _) "task"))
+              ((symbol-function 'agent-pad--write-prompt-file) (lambda (_p) "/tmp/p"))
+              ((symbol-function 'agent-pad--run-agent)
+               (lambda (&rest _) (setq ran t))))
+      (agent-pad-dispatch-copilot '())
+      (should ran))))
+
 (ert-deftest agent-pad-test-build-command-no-ask-user ()
   (let ((agent-pad-copilot-program "copilot"))
     (should (equal
@@ -177,10 +235,11 @@
              "copilot -i \"$(cat /tmp/p)\" --autopilot --allow-all --no-ask-user"))))
 
 (ert-deftest agent-pad-test-build-command-resume ()
+  "With --resume, the prompt is dropped even if a prompt file is given."
   (let ((agent-pad-copilot-program "copilot"))
     (should (equal
              (agent-pad--build-copilot-command '("--resume") "/tmp/p")
-             "copilot -i \"$(cat /tmp/p)\" --resume"))))
+             "copilot --resume"))))
 
 (ert-deftest agent-pad-test-build-command-resume-without-prompt ()
   "With --resume and no prompt file, omit the -i/-p prompt entirely."
@@ -188,6 +247,20 @@
     (should (equal
              (agent-pad--build-copilot-command '("--resume") nil)
              "copilot --resume"))))
+
+(ert-deftest agent-pad-test-build-command-resume-by-id ()
+  "A --resume=ID option resumes a specific session and drops the prompt."
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--resume=abc123") "/tmp/p")
+             "copilot --resume abc123"))))
+
+(ert-deftest agent-pad-test-build-command-resume-by-id-quotes ()
+  "A session id with shell-special characters is quoted."
+  (let ((agent-pad-copilot-program "copilot"))
+    (should (equal
+             (agent-pad--build-copilot-command '("--resume=a b") nil)
+             (concat "copilot --resume " (shell-quote-argument "a b"))))))
 
 (ert-deftest agent-pad-test-build-command-respects-program-custom ()
   (let ((agent-pad-copilot-program "/opt/bin/copilot"))

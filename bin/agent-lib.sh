@@ -45,6 +45,13 @@ agent_get_window_id() {
   [[ -f "$f" ]] && awk -F'|' '{print $5}' "$f"
 }
 
+# Return success if WID names a tmux window that currently exists.
+agent_window_alive() {
+  local wid="$1"
+  [[ -n "$wid" ]] || return 1
+  tmux list-windows -a -F '#{window_id}' 2>/dev/null | grep -qx "$wid"
+}
+
 agent_read_state() {
   local task="$1"
   local f="${AGENT_STATE_DIR}/${task}"

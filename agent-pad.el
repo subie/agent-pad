@@ -404,6 +404,13 @@ Requires Emacs to be running inside a tmux client."
       (when (yes-or-no-p (format "Kill agent '%s'? " task))
         (shell-command (format "agent-stop %s" (shell-quote-argument task)))
         (remhash task agent-pad--previous-states)
+        ;; Kill any lingering eat buffer for this task.  Its tmux process is
+        ;; still "live" (attached to a now-dead grouped session), so reusing
+        ;; the same task name would otherwise re-display this stale buffer
+        ;; instead of attaching to the freshly created window.
+        (when-let ((b (get-buffer (format "*agent:%s*" task))))
+          (let ((kill-buffer-query-functions nil))
+            (kill-buffer b)))
         (agent-pad-refresh)))))
 
 (defun agent-pad-rename ()
@@ -625,18 +632,30 @@ editing and resumed (with its options intact) on commit/abort."
   :argument "--effort="
   :choices '("low" "medium" "high"))
 
+(transient-define-infix agent-pad--infix-resume-id ()
+  "Resume a specific Copilot session by id."
+  :class 'transient-option
+  :key "-S"
+  :description "--resume <session-id>"
+  :argument "--resume="
+  :reader (lambda (_prompt _init _hist)
+            (read-string "Resume session id: ")))
+
 ;;;; Command builder and dispatch suffixes
 
 (defun agent-pad--build-copilot-command (args promptfile)
   "Build a copilot command string from transient ARGS and PROMPTFILE."
   (let* ((dir (transient-arg-value "-C=" args))
          (effort (transient-arg-value "--effort=" args))
+         (resume-id (transient-arg-value "--resume=" args))
+         (resume (or (member "--resume" args)
+                     (and resume-id (not (string-empty-p resume-id)))))
          (non-interactive (member "--non-interactive" args))
          (mode-flag (if non-interactive "-p" "-i"))
          (parts (list agent-pad-copilot-program)))
-    ;; A prompt file is optional: with --resume the user may simply resume
-    ;; the previous session without supplying any new prompt.
-    (when (and promptfile (not (string-empty-p promptfile)))
+    ;; A prompt file is optional and is never passed when resuming: --resume
+    ;; continues a previous session and must not be given a new prompt.
+    (when (and promptfile (not (string-empty-p promptfile)) (not resume))
       (setq parts (append parts
                           (list mode-flag
                                 (format "\"$(cat %s)\""
@@ -658,21 +677,40 @@ editing and resumed (with its options intact) on commit/abort."
       (setq parts (append parts (list "--allow-all-tools")))))
     (when (member "--no-ask-user" args)
       (setq parts (append parts (list "--no-ask-user"))))
-    (when (member "--resume" args)
-      (setq parts (append parts (list "--resume"))))
+    ;; Resume: a bare --resume continues the last session; --resume=ID
+    ;; continues a specific session by id.
+    (cond
+     ((and resume-id (not (string-empty-p resume-id)))
+      (setq parts (append parts (list "--resume" (shell-quote-argument resume-id)))))
+     ((member "--resume" args)
+      (setq parts (append parts (list "--resume")))))
     (when (and effort (not (string-empty-p effort)))
       (setq parts (append parts (list "--effort" effort))))
     (string-join parts " ")))
 
+(defvar agent-pad--last-dispatched-prompt nil
+  "The prompt text of the most recent successful Copilot dispatch.
+Used to warn when the same prompt is about to be dispatched again,
+guarding against forgetting to compose a fresh prompt.")
+
 (defun agent-pad-dispatch-copilot (&optional args)
   "Dispatch a Copilot agent from the transient ARGS and composed prompt."
   (interactive (list (transient-args 'agent-pad-dispatch)))
-  (let* ((resume (member "--resume" args))
+  (let* ((resume-id (transient-arg-value "--resume=" args))
+         (resume (or (member "--resume" args)
+                     (and resume-id (not (string-empty-p resume-id)))))
          (prompt (string-trim agent-pad--prompt))
-         (has-prompt (not (string-empty-p prompt))))
-    ;; --resume continues a previous session, so a prompt is optional.
+         ;; --resume continues a previous session: never supply a prompt.
+         (has-prompt (and (not resume) (not (string-empty-p prompt)))))
     (when (and (not has-prompt) (not resume))
       (user-error "No prompt set — press \"e\" to compose one"))
+    ;; Guard against accidentally re-dispatching the previous prompt unchanged
+    ;; (the prompt buffer retains the last prompt so it can be resubmitted).
+    (when (and has-prompt
+               agent-pad--last-dispatched-prompt
+               (equal prompt (string-trim agent-pad--last-dispatched-prompt))
+               (not (y-or-n-p "Dispatch the same prompt as last time? ")))
+      (user-error "Aborted — press \"e\" to edit the prompt"))
     (let* ((task-arg (transient-arg-value "--task=" args))
            (derived (let ((slug (and has-prompt
                                      (agent-pad--slugify
@@ -690,7 +728,9 @@ editing and resumed (with its options intact) on commit/abort."
            (cmd (agent-pad--build-copilot-command args promptfile)))
       (when (string-empty-p task)
         (user-error "Task name is required"))
-      (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch dir))))
+      (agent-pad--run-agent task cmd agent-pad-attach-on-dispatch dir)
+      (when has-prompt
+        (setq agent-pad--last-dispatched-prompt prompt)))))
 
 (defun agent-pad-dispatch-raw (task cmd)
   "Dispatch an arbitrary command CMD as agent TASK."
@@ -713,6 +753,7 @@ editing and resumed (with its options intact) on commit/abort."
     ("-Y" "--allow-all (yolo: tools+paths+urls)" "--allow-all")
     ("-Q" "--no-ask-user (never prompt the user)" "--no-ask-user")
     ("-R" "--resume (resume last session)" "--resume")
+    (agent-pad--infix-resume-id)
     ("-p" "Non-interactive (-p, default -i)" "--non-interactive")
     (agent-pad--infix-effort)
     (agent-pad--infix-task)]]

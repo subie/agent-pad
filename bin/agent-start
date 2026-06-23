@@ -36,8 +36,15 @@ shift
 cmd="$*"
 
 if agent_task_exists "$task"; then
-  echo "Error: task '$task' already exists. Use agent-stop first." >&2
-  exit 1
+  existing_wid=$(agent_get_window_id "$task")
+  if agent_window_alive "$existing_wid"; then
+    echo "Error: task '$task' already exists. Use agent-stop first." >&2
+    exit 1
+  fi
+  # Stale state: the recorded window is gone (e.g. just killed, or it exited
+  # and the file lingered).  Reclaim the name by removing the stale file so
+  # the same task name can be reused.
+  rm -f "${AGENT_STATE_DIR}/${task}"
 fi
 
 agent_ensure_session
@@ -67,15 +74,18 @@ agent_write_state "$task" "running" "" "\$_AQ_WID"
 eval "\$(cat "$cmdfile")"
 exit_code=\$?
 # The task may have been renamed while running; resolve our current name from
-# our window id so the exit-time state write updates the right file.
+# our window id so the exit-time state write updates the right file.  If no
+# state file claims our window id, the task was stopped or its name was
+# reclaimed by another agent — do not resurrect or clobber state in that case.
 cur_task=\$(agent_task_for_window "\$_AQ_WID")
-[[ -n "\$cur_task" ]] || cur_task="$task"
-if [[ \$exit_code -eq 0 ]]; then
-  agent_write_state "\$cur_task" "done" "exited successfully" "\$_AQ_WID"
-  agent_rename_window "\$cur_task" "done" "\$_AQ_WID"
-else
-  agent_write_state "\$cur_task" "blocked" "exited with code \$exit_code" "\$_AQ_WID"
-  agent_rename_window "\$cur_task" "blocked" "\$_AQ_WID"
+if [[ -n "\$cur_task" ]]; then
+  if [[ \$exit_code -eq 0 ]]; then
+    agent_write_state "\$cur_task" "done" "exited successfully" "\$_AQ_WID"
+    agent_rename_window "\$cur_task" "done" "\$_AQ_WID"
+  else
+    agent_write_state "\$cur_task" "blocked" "exited with code \$exit_code" "\$_AQ_WID"
+    agent_rename_window "\$cur_task" "blocked" "\$_AQ_WID"
+  fi
 fi
 echo ""
 echo "=== agent exited (code \$exit_code), press enter to close ==="
